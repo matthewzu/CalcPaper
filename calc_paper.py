@@ -258,9 +258,16 @@ class CalculatorPaperAdvanced:
         bin_str = format(value, f'0{bit_count}b')
 
         result_lines = []
-        result_lines.append(f"  十六进制: 0x{value:X}")
-        result_lines.append(f"  二进制: 0b{bin_str}")
-        result_lines.append(f"  位数: {bit_count} bits ({bit_count // 8} bytes)")
+        
+        # 根据语言选择文本
+        if self.language == 'en':
+            result_lines.append(f"  Hexadecimal: 0x{value:X}")
+            result_lines.append(f"  Binary: 0b{bin_str}")
+            result_lines.append(f"  Bits: {bit_count} bits ({bit_count // 8} bytes)")
+        else:
+            result_lines.append(f"  十六进制: 0x{value:X}")
+            result_lines.append(f"  二进制: 0b{bin_str}")
+            result_lines.append(f"  位数: {bit_count} bits ({bit_count // 8} bytes)")
 
         # 生成位索引表格
         # 不管大端小端，二进制位都从MSB到LSB显示（从左到右）
@@ -268,7 +275,10 @@ class CalculatorPaperAdvanced:
 
         if self.bit_display_mode == 'little':
             # 小端字节序：位索引从左到右递增 0→31
-            result_lines.append("  位索引 (小端字节序):")
+            if self.language == 'en':
+                result_lines.append("  Bit indices (Little Endian):")
+            else:
+                result_lines.append("  位索引 (小端字节序):")
 
             index_parts = []
             bit_parts = []
@@ -303,7 +313,10 @@ class CalculatorPaperAdvanced:
 
         elif self.bit_display_mode == 'big':
             # 大端字节序：位索引从左到右递减 31→0
-            result_lines.append("  位索引 (大端字节序):")
+            if self.language == 'en':
+                result_lines.append("  Bit indices (Big Endian):")
+            else:
+                result_lines.append("  位索引 (大端字节序):")
 
             index_parts = []
             bit_parts = []
