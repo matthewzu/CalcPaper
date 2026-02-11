@@ -9,18 +9,16 @@ on:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
-      release_id: ${{ steps.create_release.outputs.id }}
     steps:
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ github.ref_name }}
-        release_name: CalcPaper ${{ github.ref_name }}
+        name: CalcPaper ${{ github.ref_name }}
         body: |
           ## CalcPaper ${{ github.ref_name }}
 
@@ -47,6 +45,8 @@ jobs:
   build-windows:
     needs: create-release
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python
@@ -58,18 +58,15 @@ jobs:
         pip install pyinstaller
         pyinstaller --onefile --windowed --name=CalcPaper calc_paper_gui.py
     - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: dist/CalcPaper.exe
-        asset_name: CalcPaper-Windows.exe
-        asset_content_type: application/octet-stream
+        files: dist/CalcPaper.exe
 
   build-macos:
     needs: create-release
     runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python
@@ -85,18 +82,15 @@ jobs:
         cp -R dist/CalcPaper.app dmg_temp/
         hdiutil create -volname "CalcPaper" -srcfolder dmg_temp -ov -format UDZO CalcPaper.dmg
     - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: CalcPaper.dmg
-        asset_name: CalcPaper-macOS.dmg
-        asset_content_type: application/octet-stream
+        files: CalcPaper.dmg
 
   build-linux:
     needs: create-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python
@@ -108,11 +102,6 @@ jobs:
         pip install pyinstaller
         pyinstaller --onefile --windowed --name=CalcPaper calc_paper_gui.py
     - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: dist/CalcPaper
-        asset_name: CalcPaper-Linux
-        asset_content_type: application/octet-stream
+        files: dist/CalcPaper
