@@ -541,36 +541,39 @@ class CalculatorGUIAdvanced:
     def load_example(self):
         """加载示例"""
         if self.language == 'en':
-            example = """# 高级计算稿纸示例
+            example = """# Advanced CalcPaper Example
 
-# 设置小端字节序
+# Set little endian
 endian: little
 
-# 基本16进制运算
+# Basic hex operations
 a = 0xFF
 b = 0x1234
-和 = a + b
+sum = a + b
 
-# 位运算
-与 = a & b
-或 = a | b
-异或 = a ^ b
-左移 = a << 2
-右移 = b >> 4
+# Bitwise operations
+and_op = a & b
+or_op = a | b
+xor_op = a ^ b
+left_shift = a << 2
+right_shift = b >> 4
 
-# 切换到大端字节序
+# Switch to big endian
 endian: big
 
-# RGB颜色提取
-颜色 = 0xFF8040
-红色 = (颜色 >> 16) & 0xFF
-绿色 = (颜色 >> 8) & 0xFF
-蓝色 = 颜色 & 0xFF
+# RGB color extraction
+color = 0xFF8040
+red = (color >> 16) & 0xFF
+green = (color >> 8) & 0xFF
+blue = color & 0xFF
 
-# 百分数计算
-价格 = 100
-折扣 = 价格 * 15%
-实付 = 价格 - 折扣
+# View bit structure with bitmap
+bitmap view_color = color
+
+# Percentage calculation
+price = 100
+discount = price * 15%
+final_price = price - discount
 """
         else:
             example = """# 高级计算稿纸示例
@@ -598,6 +601,9 @@ endian: big
 红色 = (颜色 >> 16) & 0xFF
 绿色 = (颜色 >> 8) & 0xFF
 蓝色 = 颜色 & 0xFF
+
+# 使用bitmap查看位结构
+bitmap 查看颜色 = 颜色
 
 # 百分数计算
 价格 = 100

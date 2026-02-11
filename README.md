@@ -65,6 +65,19 @@ python calc_paper.py --lang en
 python calc_paper.py --version
 ```
 
+#### 使用方式
+
+**GUI 图形界面：**
+1. 直接在输入框中编写计算式
+2. 点击"计算"按钮或按 F5 查看结果
+3. 点击"打开文件"或按 Ctrl+O 加载已有的计算文件
+4. 点击"加载示例"或按 Ctrl+L 查看示例代码
+
+**命令行：**
+1. 运行程序后直接输入计算式
+2. 输入 `exit` 或 `quit` 退出程序
+3. 可以将计算式保存为 .txt 文件，然后在 GUI 中打开
+
 ### 📝 使用示例
 
 #### 示例1: 基础计算
@@ -317,6 +330,19 @@ python calc_paper.py --lang en
 # Check version
 python calc_paper.py --version
 ```
+
+#### How to Use
+
+**GUI Interface:**
+1. Write calculation expressions directly in the input box
+2. Click "Calculate" button or press F5 to see results
+3. Click "Open File" or press Ctrl+O to load existing calculation files
+4. Click "Load Example" or press Ctrl+L to view example code
+
+**Command Line:**
+1. Enter calculation expressions after running the program
+2. Type `exit` or `quit` to exit
+3. You can save expressions to .txt files and open them in GUI
 
 ### 📝 Usage Examples
 
