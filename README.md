@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
@@ -10,8 +10,6 @@
 **支持位运算的智能计算器 | Smart Calculator with Bitwise Operations**
 
 [English](#english) | [中文](#中文)
-
-![Screenshot](docs/images/screenshot.png)
 
 </div>
 
@@ -23,6 +21,8 @@
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、16进制/2进制数值，让复杂计算像在纸上写算式一样简单。
 
+版本：1.0
+
 ### ✨ 核心特性
 
 - 🧮 **变量引用** - 定义变量，后续直接使用
@@ -32,7 +32,9 @@ CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，�
 - 🔄 **字节序支持** - 大端/小端字节序切换
 - 💯 **百分数计算** - 直接使用 6.5%、10% 等
 - 🎨 **图形界面** - 友好的 GUI 界面（可选）
-- 🌏 **中文变量名** - 支持中文作为变量名
+- 🌏 **中英文切换** - GUI和命令行都支持中英文
+- 🔤 **字体缩放** - GUI支持字体放大缩小
+- ⌨️ **快捷键** - 丰富的快捷键支持
 - 💡 **智能注释** - 位运算自动显示16进制格式
 
 ### 🚀 快速开始
@@ -41,7 +43,7 @@ CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，�
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/CalcPaper.git
+git clone https://github.com/matthewzu/CalcPaper.git
 cd CalcPaper
 
 # 无需安装依赖（使用 Python 标准库）
@@ -53,8 +55,14 @@ cd CalcPaper
 # 图形界面版本（推荐）
 python calc_paper_gui.py
 
-# 命令行版本
+# 命令行版本（中文）
 python calc_paper.py
+
+# 命令行版本（英文）
+python calc_paper.py --lang en
+
+# 查看版本
+python calc_paper.py --version
 ```
 
 ### 📝 使用示例
@@ -146,10 +154,19 @@ IP = 0xC0A80001  # 192.168.0.1
 
 ### 📚 文档
 
-- [完整使用指南](docs/使用指南.md)
-- [位运算快速参考](docs/位运算快速参考.md)
-- [16进制注释格式说明](docs/16进制注释格式说明.md)
-- [bitmap关键字说明](docs/bitmap关键字说明.md)
+#### 中文文档
+
+- [使用指南](docs/使用指南.md) - 完整的使用说明和示例
+- [位运算快速参考](docs/位运算快速参考.md) - 位运算操作符和技巧
+- [16进制注释格式说明](docs/16进制注释格式说明.md) - 自动16进制注释功能
+- [bitmap关键字说明](docs/bitmap关键字说明.md) - 位结构可视化功能
+
+#### English Documentation
+
+- [User Guide](docs/User-Guide.md) - Complete usage instructions and examples
+- [Bitwise Operations Reference](docs/Bitwise-Operations-Reference.md) - Bitwise operators and techniques
+- [Hex Comment Format](docs/Hex-Comment-Format.md) - Automatic hex comment feature
+- [bitmap Keyword Guide](docs/bitmap-Keyword-Guide.md) - Bit structure visualization
 
 ### 🖥️ 系统要求
 
@@ -188,14 +205,27 @@ dist\CalcPaper.exe
 ### 🎨 界面预览
 
 #### GUI 版本
+
 - 双栏布局：输入区域 | 输出结果
 - 语法高亮显示
-- 快捷键支持（F5、Ctrl+Enter等）
+- 快捷键支持：
+  - F5 或 Ctrl+Enter：计算
+  - Ctrl+D：清空
+  - Ctrl+L：加载示例
+  - Ctrl+O：打开文件
+  - Ctrl+S：保存结果
+  - Ctrl+Plus：放大字体
+  - Ctrl+Minus：缩小字体
+- 中英文切换按钮
+- 字体缩放按钮（A+/A-）
 - 文件操作（打开、保存）
 
 #### 命令行版本
+
 - 交互式输入
 - 实时计算
+- 中英文模式切换（--lang 参数）
+- 示例在 help 信息中显示
 - 适合脚本调用
 
 ### 🤝 贡献
@@ -228,9 +258,9 @@ dist\CalcPaper.exe
 
 ### 📮 联系方式
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/CalcPaper/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/CalcPaper/discussions)
-- **Email**: your.email@example.com
+- **Issues**: [GitHub Issues](https://github.com/matthewzu/CalcPaper/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/matthewzu/CalcPaper/discussions)
+- **Email**: xiaofeng_zu@163.com
 
 ### 🌟 Star History
 
@@ -244,6 +274,8 @@ dist\CalcPaper.exe
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, hexadecimal/binary numbers, making complex calculations as simple as writing on paper.
 
+Version: 1.0
+
 ### ✨ Key Features
 
 - 🧮 **Variable References** - Define variables and use them later
@@ -253,7 +285,9 @@ CalcPaper is a smart calculator designed for programmers, supporting variable re
 - 🔄 **Endianness Support** - Big-endian/Little-endian switching
 - 💯 **Percentage Calculation** - Direct use of 6.5%, 10%, etc.
 - 🎨 **GUI Interface** - User-friendly graphical interface (optional)
-- 🌏 **Unicode Variables** - Support Chinese variable names
+- 🌏 **Language Toggle** - Both GUI and CLI support Chinese/English
+- 🔤 **Font Scaling** - GUI supports font size adjustment
+- ⌨️ **Keyboard Shortcuts** - Rich shortcut support
 - 💡 **Smart Comments** - Auto hex format for bitwise operations
 
 ### 🚀 Quick Start
@@ -262,7 +296,7 @@ CalcPaper is a smart calculator designed for programmers, supporting variable re
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/CalcPaper.git
+git clone https://github.com/matthewzu/CalcPaper.git
 cd CalcPaper
 
 # No dependencies needed (uses Python standard library)
@@ -274,8 +308,14 @@ cd CalcPaper
 # GUI version (recommended)
 python calc_paper_gui.py
 
-# Command-line version
+# Command-line version (Chinese)
 python calc_paper.py
+
+# Command-line version (English)
+python calc_paper.py --lang en
+
+# Check version
+python calc_paper.py --version
 ```
 
 ### 📝 Usage Examples
@@ -379,8 +419,8 @@ MIT License - see [LICENSE](LICENSE) file
 
 ### 📮 Contact
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/CalcPaper/issues)
-- **Email**: your.email@example.com
+- **Issues**: [GitHub Issues](https://github.com/matthewzu/CalcPaper/issues)
+- **Email**: xiaofeng_zu@163.com
 
 ---
 
@@ -390,6 +430,6 @@ MIT License - see [LICENSE](LICENSE) file
 
 Made with ❤️ by developers, for developers
 
-[Report Bug](https://github.com/yourusername/CalcPaper/issues) · [Request Feature](https://github.com/yourusername/CalcPaper/issues) · [Documentation](docs/)
+[Report Bug](https://github.com/matthewzu/CalcPaper/issues) · [Request Feature](https://github.com/matthewzu/CalcPaper/issues) · [Documentation](docs/)
 
 </div>

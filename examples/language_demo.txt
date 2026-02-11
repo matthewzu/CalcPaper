@@ -1,0 +1,41 @@
+# CalcPaper 中英文示例 / Language Demo
+
+# 中文示例 / Chinese Example
+# 使用中文运行: python calc_paper.py --lang zh
+
+# 基本计算
+工资 = 8000
+房租 = 2000
+餐费 = 30 * 25
+结余 = 工资 - 房租 - 餐费
+
+# 位运算
+颜色 = 0xFF8040
+红色 = (颜色 >> 16) & 0xFF
+绿色 = (颜色 >> 8) & 0xFF
+蓝色 = 颜色 & 0xFF
+
+# 字节序显示
+endian: big
+bitmap 查看颜色 = 颜色
+
+---
+
+# English Example
+# Run with English: python calc_paper.py --lang en
+
+# Basic calculation
+salary = 8000
+rent = 2000
+food = 30 * 25
+balance = salary - rent - food
+
+# Bitwise operations
+color = 0xFF8040
+red = (color >> 16) & 0xFF
+green = (color >> 8) & 0xFF
+blue = color & 0xFF
+
+# Endianness display
+endian: big
+bitmap view_color = color

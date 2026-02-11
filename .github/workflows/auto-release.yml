@@ -1,0 +1,118 @@
+name: Auto Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: CalcPaper ${{ github.ref_name }}
+        body: |
+          ## CalcPaper ${{ github.ref_name }}
+
+          高级计算稿纸 - 支持16进制、位运算、双语界面
+
+          ### 下载说明
+          - **Windows**: 下载 `CalcPaper-Windows.exe`
+          - **macOS**: 下载 `CalcPaper-macOS.dmg`
+          - **Linux**: 下载 `CalcPaper-Linux`
+
+          ### 新功能
+          - ✅ 16进制、2进制、10进制混合运算
+          - ✅ 位运算支持 (&, |, ^, <<, >>)
+          - ✅ bitmap关键字位结构可视化
+          - ✅ 中英文双语界面
+          - ✅ 字体缩放功能 (8-32)
+          - ✅ 语法高亮显示
+          - ✅ 文件导入导出
+
+          完整文档: [README.md](https://github.com/${{ github.repository }})
+        draft: false
+        prerelease: false
+
+  build-windows:
+    needs: create-release
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - name: Build
+      run: |
+        pip install pyinstaller
+        pyinstaller --onefile --windowed --name=CalcPaper calc_paper_gui.py
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: dist/CalcPaper.exe
+        asset_name: CalcPaper-Windows.exe
+        asset_content_type: application/octet-stream
+
+  build-macos:
+    needs: create-release
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - name: Build
+      run: |
+        pip install pyinstaller
+        pyinstaller --onefile --windowed --name=CalcPaper calc_paper_gui.py
+        # 创建DMG
+        mkdir dmg_temp
+        cp -R dist/CalcPaper.app dmg_temp/
+        hdiutil create -volname "CalcPaper" -srcfolder dmg_temp -ov -format UDZO CalcPaper.dmg
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: CalcPaper.dmg
+        asset_name: CalcPaper-macOS.dmg
+        asset_content_type: application/octet-stream
+
+  build-linux:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - name: Build
+      run: |
+        pip install pyinstaller
+        pyinstaller --onefile --windowed --name=CalcPaper calc_paper_gui.py
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: dist/CalcPaper
+        asset_name: CalcPaper-Linux
+        asset_content_type: application/octet-stream
