@@ -5,7 +5,7 @@
 ![Version](https://img.shields.io/badge/version-1.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
-![License](https://img.shields.io/badge/license-MIT-orange.svg)
+![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
 
 **支持位运算的智能计算器 | Smart Calculator with Bitwise Operations**
 
@@ -262,7 +262,14 @@ dist\CalcPaper.exe
 
 ### 📄 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+本项目采用 GPL-3.0 许可证 - 详见 [LICENSE](LICENSE) 文件
+
+**GPL-3.0 许可证保护：**
+- ✅ 任何人可以自由使用、修改和分发
+- ✅ 修改后的版本必须同样开源
+- ✅ 不能闭源商业化
+- ✅ 保护原作者的创意和贡献
+- ✅ 确保所有改进回馈社区
 
 ### 🙏 致谢
 
@@ -436,7 +443,14 @@ Issues and Pull Requests are welcome!
 
 ### 📄 License
 
-MIT License - see [LICENSE](LICENSE) file
+This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details
+
+**GPL-3.0 License Protection:**
+- ✅ Anyone can freely use, modify, and distribute
+- ✅ Modified versions must also be open source
+- ✅ Cannot be closed-source commercialized
+- ✅ Protects the author's creativity and contributions
+- ✅ Ensures all improvements benefit the community
 
 ### 🙏 Acknowledgments
 
