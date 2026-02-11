@@ -23,22 +23,23 @@ jobs:
           ## CalcPaper ${{ github.ref_name }}
 
           高级计算稿纸 - 支持16进制、位运算、双语界面
+          Advanced Calculator - Supports Hex, Bitwise Operations, Bilingual Interface
 
-          ### 下载说明
-          - **Windows**: 下载 `CalcPaper-Windows.exe`
-          - **macOS**: 下载 `CalcPaper-macOS.dmg`
-          - **Linux**: 下载 `CalcPaper-Linux`
+          ### 下载说明 / Download Instructions
+          - **Windows**: Download `CalcPaper.exe`
+          - **macOS**: Download `CalcPaper.dmg`
+          - **Linux**: Download `CalcPaper`
 
-          ### 新功能
-          - ✅ 16进制、2进制、10进制混合运算
-          - ✅ 位运算支持 (&, |, ^, <<, >>)
-          - ✅ bitmap关键字位结构可视化
-          - ✅ 中英文双语界面
-          - ✅ 字体缩放功能 (8-32)
-          - ✅ 语法高亮显示
-          - ✅ 文件导入导出
+          ### 新功能 / Features
+          - ✅ 16进制、2进制、10进制混合运算 / Hex, Binary, Decimal mixed operations
+          - ✅ 位运算支持 (&, |, ^, <<, >>) / Bitwise operations support
+          - ✅ bitmap关键字位结构可视化 / Bitmap keyword visualization
+          - ✅ 中英文双语界面 / Chinese/English bilingual interface
+          - ✅ 字体缩放功能 (8-32) / Font scaling (8-32)
+          - ✅ 语法高亮显示 / Syntax highlighting
+          - ✅ 文件导入导出 / File import/export
 
-          完整文档: [README.md](https://github.com/${{ github.repository }})
+          完整文档 / Full Documentation: [README.md](https://github.com/${{ github.repository }})
         draft: false
         prerelease: false
 
