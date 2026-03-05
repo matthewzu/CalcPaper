@@ -558,9 +558,6 @@ class CalculatorGUIAdvanced:
         if self.language == 'en':
             example = """# Advanced CalcPaper Example
 
-# Set little endian
-endian: little
-
 # Basic hex operations
 a = 0xFF
 b = 0x1234
@@ -573,17 +570,14 @@ xor_op = a ^ b
 left_shift = a << 2
 right_shift = b >> 4
 
-# Switch to big endian
-endian: big
-
 # RGB color extraction
 color = 0xFF8040
 red = (color >> 16) & 0xFF
 green = (color >> 8) & 0xFF
 blue = color & 0xFF
 
-# View bit structure with bitmap
-bitmap view_color = color
+# View bit structure with bitmap (big endian)
+bitmap(color, 1)
 
 # Percentage calculation
 price = 100
@@ -592,9 +586,6 @@ final_price = price - discount
 """
         else:
             example = """# 高级计算稿纸示例
-
-# 设置小端字节序
-endian: little
 
 # 基本16进制运算
 a = 0xFF
@@ -608,17 +599,14 @@ b = 0x1234
 左移 = a << 2
 右移 = b >> 4
 
-# 切换到大端字节序
-endian: big
-
 # RGB颜色提取
 颜色 = 0xFF8040
 红色 = (颜色 >> 16) & 0xFF
 绿色 = (颜色 >> 8) & 0xFF
 蓝色 = 颜色 & 0xFF
 
-# 使用bitmap查看位结构
-bitmap 查看颜色 = 颜色
+# 使用bitmap查看位结构（大端字节序）
+bitmap(颜色, 1)
 
 # 百分数计算
 价格 = 100

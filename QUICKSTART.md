@@ -37,11 +37,8 @@ y = 0x0F
 ### 4. 查看位结构
 
 ```python
-# 设置字节序
-endian: big
-
-# 使用 bitmap 查看
-bitmap 查看 = 0xFF
+# 使用 bitmap 函数查看（大端字节序）
+bitmap(0xFF, 1)
 ```
 
 ### 5. 快捷键
@@ -61,7 +58,7 @@ bitmap 查看 = 0xFF
 - [完整使用指南](docs/使用指南.md)
 - [位运算参考](docs/位运算快速参考.md)
 - [16进制注释说明](docs/16进制注释格式说明.md)
-- [bitmap关键字说明](docs/bitmap关键字说明.md)
+- [bitmap函数说明](docs/bitmap函数说明.md)
 - [示例文件](examples/)
 
 ## 常见问题
@@ -95,21 +92,28 @@ python calc_paper.py --lang zh
 
 ### Q: 如何查看详细的位结构？
 
-使用 `bitmap` 关键字：
+使用 `bitmap()` 函数（只能单独使用）：
 
 ```python
-endian: big
-bitmap 查看 = 0xFF
+# 小端字节序（默认）
+a = 0xFF
+bitmap(a)
+
+# 大端字节序
+bitmap(a, 1)
 ```
 
-### Q: 如何设置字节序？
+### Q: bitmap 函数如何使用？
 
 ```python
-# 大端字节序
-endian: big
+# 语法
+bitmap(值)        # 小端字节序（默认）
+bitmap(值, 0)     # 小端字节序（显式）
+bitmap(值, 1)     # 大端字节序
 
-# 小端字节序
-endian: little
+# 注意：只能单独使用，不能赋值
+a = 0xFF
+bitmap(a, 1)  # 正确
 ```
 
 ### Q: 程序支持哪些操作符？
@@ -144,14 +148,13 @@ endian: little
 
 ```python
 # RGB颜色提取
-endian: big
 颜色 = 0xFF8040
 红色 = (颜色 >> 16) & 0xFF
 绿色 = (颜色 >> 8) & 0xFF
 蓝色 = 颜色 & 0xFF
 
-# 查看位结构
-bitmap 查看颜色 = 颜色
+# 查看位结构（大端字节序）
+bitmap(颜色, 1)
 ```
 
 ### 百分数计算示例

@@ -37,11 +37,8 @@ and_result = x & y
 ### 4. View Bit Structure
 
 ```python
-# Set endianness
-endian: big
-
-# Use bitmap to view
-bitmap view = 0xFF
+# Use bitmap function (big endian)
+view = bitmap(0xFF, 1)
 ```
 
 ### 5. Keyboard Shortcuts
@@ -61,7 +58,7 @@ Click the "中文" button on the interface to switch to Chinese.
 - [User Guide](docs/User-Guide.md)
 - [Bitwise Operations Reference](docs/Bitwise-Operations-Reference.md)
 - [Hex Comment Format](docs/Hex-Comment-Format.md)
-- [bitmap Keyword Guide](docs/bitmap-Keyword-Guide.md)
+- [bitmap Function Guide](docs/bitmap-Function-Guide.md)
 - [Example Files](examples/)
 
 ## FAQ
@@ -95,21 +92,27 @@ python calc_paper.py --lang en
 
 ### Q: How to view detailed bit structure?
 
-Use `bitmap` keyword:
+Use `bitmap()` function:
 
 ```python
-endian: big
-bitmap view = 0xFF
+# Little endian (default)
+view = bitmap(0xFF)
+
+# Big endian
+view = bitmap(0xFF, 1)
 ```
 
-### Q: How to set endianness?
+### Q: How to use bitmap function?
 
 ```python
-# Big endian
-endian: big
+# Syntax
+bitmap(value)        # Little endian (default)
+bitmap(value, 0)     # Little endian (explicit)
+bitmap(value, 1)     # Big endian
 
-# Little endian
-endian: little
+# Example
+a = 0xFF
+view_a = bitmap(a, 1)
 ```
 
 ### Q: What operators are supported?
@@ -144,14 +147,13 @@ balance = salary - rent - food
 
 ```python
 # RGB color extraction
-endian: big
 color = 0xFF8040
 red = (color >> 16) & 0xFF
 green = (color >> 8) & 0xFF
 blue = color & 0xFF
 
-# View bit structure
-bitmap view_color = color
+# View bit structure (big endian)
+view_color = bitmap(color, 1)
 ```
 
 ### Percentage Calculation Example

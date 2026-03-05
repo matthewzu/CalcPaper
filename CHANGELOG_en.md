@@ -1,5 +1,32 @@
 # Changelog
 
+# Changelog
+
+## [1.1] - 2026-03-05
+
+### Breaking Changes
+- 🔄 **bitmap Syntax Refactoring**: Merged `endian:` command and `bitmap` keyword into function form
+  - Old syntax: `endian: big` + `bitmap variable = value`
+  - New syntax: `bitmap(value, 1)` or `variable = bitmap(value, 1)`
+  - `bitmap(value)` or `bitmap(value, 0)` for little endian (default)
+  - `bitmap(value, 1)` for big endian
+  - Function has no return value, can only be used standalone or with variable assignment
+
+### Added
+- ✨ Added `bitmap()` function with parameterized endianness control
+- 📚 Added documentation: `bitmap函数说明.md` and `bitmap-Function-Guide.md`
+
+### Improved
+- 🎯 Simplified bit structure viewing syntax, more functional programming style
+- 📖 Updated all example code to use new bitmap function syntax
+- 🔧 Optimized code structure, removed global endianness state
+
+### Removed
+- ❌ Removed `endian:` command (replaced by bitmap function parameter)
+- ❌ Removed `bitmap` keyword syntax (changed to function call)
+
+---
+
 ## [1.0] - 2026-02-11
 
 ### Added

@@ -102,28 +102,25 @@ python calc_paper.py --version
 #### 示例2: 位运算
 
 ```python
-# 设置字节序
-endian: big
-
 # RGB 颜色提取
 颜色 = 0xFF8040
 R = (颜色 >> 16) & 0xFF
 G = (颜色 >> 8) & 0xFF
 B = 颜色 & 0xFF
 
-# 使用 bitmap 查看位结构
-bitmap 查看颜色 = 颜色
+# 使用 bitmap 查看位结构（大端字节序）
+bitmap(颜色, 1)
 ```
 
 **输出：**
 
 ```bash
-颜色 = 0xFF8040                    = 16744512
-R = (颜色 >> 16) & 0xFF            = 255  # 0xFF8040 >> 16 & 0xFF
-G = (颜色 >> 8) & 0xFF             = 128  # 0xFF8040 >> 8 & 0xFF
-B = 颜色 & 0xFF                    = 64   # 0xFF8040 & 0xFF
+颜色 = 0xFF8040           = 16744512
+R = (颜色 >> 16) & 0xFF   = 255  # 0xFF8040 >> 16 & 0xFF
+G = (颜色 >> 8) & 0xFF    = 128  # 0xFF8040 >> 8 & 0xFF
+B = 颜色 & 0xFF           = 64   # 0xFF8040 & 0xFF
 
-bitmap 查看颜色 = 颜色              = 16744512 (0xFF8040, 0b111111111000000001000000)
+bitmap(颜色, 1)           = 16744512  # 16744512
   十六进制: 0xFF8040
   二进制: 0b111111111000000001000000
   位数: 24 bits (3 bytes)
@@ -172,14 +169,14 @@ IP = 0xC0A80001  # 192.168.0.1
 - [使用指南](docs/使用指南.md) - 完整的使用说明和示例
 - [位运算快速参考](docs/位运算快速参考.md) - 位运算操作符和技巧
 - [16进制注释格式说明](docs/16进制注释格式说明.md) - 自动16进制注释功能
-- [bitmap关键字说明](docs/bitmap关键字说明.md) - 位结构可视化功能
+- [bitmap函数说明](docs/bitmap函数说明.md) - 位结构可视化功能
 
 #### English Documentation
 
 - [User Guide](docs/User-Guide.md) - Complete usage instructions and examples
 - [Bitwise Operations Reference](docs/Bitwise-Operations-Reference.md) - Bitwise operators and techniques
 - [Hex Comment Format](docs/Hex-Comment-Format.md) - Automatic hex comment feature
-- [bitmap Keyword Guide](docs/bitmap-Keyword-Guide.md) - Bit structure visualization
+- [bitmap Function Guide](docs/bitmap-Function-Guide.md) - Bit structure visualization
 
 ### 🖥️ 系统要求
 
@@ -366,17 +363,14 @@ balance = salary - rent - food
 #### Example 2: Bitwise Operations
 
 ```python
-# Set endianness
-endian: big
-
 # RGB color extraction
 color = 0xFF8040
 R = (color >> 16) & 0xFF  # 255
 G = (color >> 8) & 0xFF   # 128
 B = color & 0xFF          # 64
 
-# View bit structure with bitmap
-bitmap view_color = color
+# View bit structure with bitmap (big endian)
+bitmap(color, 1)
 ```
 
 #### Example 3: Network Programming

@@ -49,65 +49,63 @@ class CalculatorPaperAdvanced:
         if not line or line.startswith('#'):
             return None, None, None, None, False
 
-        # 检查是否是字节序设置命令
-        if line.lower().startswith('endian:'):
-            endian = line.split(':', 1)[1].strip().lower()
-            if endian in ['little', 'small', '小端', '小字节序']:
-                self.bit_display_mode = 'little'
-                msg = "已设置为小端字节序 (Little Endian)" if self.language == 'zh' else "Set to Little Endian"
-                return None, None, msg, 'endian', False
-            elif endian in ['big', 'large', '大端', '大字节序']:
-                self.bit_display_mode = 'big'
-                msg = "已设置为大端字节序 (Big Endian)" if self.language == 'zh' else "Set to Big Endian"
-                return None, None, msg, 'endian', False
-            elif endian in ['none', 'off', '关闭']:
-                self.bit_display_mode = None
-                msg = "已关闭字节序显示" if self.language == 'zh' else "Endian display disabled"
-                return None, None, msg, 'endian', False
-            else:
-                msg = f"错误: 未知的字节序类型: {endian}" if self.language == 'zh' else f"Error: Unknown endian type: {endian}"
-                return None, None, msg, 'endian', False
-
         # 移除行内注释
         original_expr = line
         if '#' in line:
             line = line.split('#')[0].strip()
 
-        # 检查是否使用了 bitmap 关键字
+        # 检查是否使用了 bitmap 函数（只能单独使用，不能赋值或参与计算）
         use_bitmap = False
-        if line.lower().startswith('bitmap'):
+        bitmap_endian = None
+        bitmap_pattern = r'^bitmap\s*\(\s*([^,)]+)(?:\s*,\s*([01]))?\s*\)$'
+        bitmap_match = re.match(bitmap_pattern, line, re.IGNORECASE)
+        
+        if bitmap_match:
             use_bitmap = True
-            # 移除 bitmap 关键字
-            line = line[6:].strip()
+            value_expr = bitmap_match.group(1).strip()
+            endian_param = bitmap_match.group(2)
+            
+            # 设置临时字节序
+            if endian_param == '1':
+                bitmap_endian = 'big'
+            else:  # '0' 或 None
+                bitmap_endian = 'little'
+            
+            # 只保留值表达式用于计算
+            line = value_expr
+            label = None  # bitmap 不能赋值，所以没有标签
+            is_assignment = False
+
+        else:
+            # 检查是否有标签（如：房租 = 1000）
+            label = None
+            expr = line
+            is_assignment = False
+
+            if '=' in line:
+                parts = line.split('=', 1)
+                left = parts[0].strip()
+                right = parts[1].strip()
+
+                # 检查左边是否是变量名（不包含运算符）
+                if re.match(r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$', left):
+                    label = left
+                    expr = right
+                    is_assignment = True
+                    line = expr
 
         # 检查原始表达式是否包含16进制或2进制（在变量替换之前）
         has_hex_bin = bool(re.search(r'0[xXbB][0-9a-fA-F]+', line))
 
-        # 检查是否有标签（如：房租 = 1000）
-        label = None
-        expr = line
-        is_assignment = False
-
-        if '=' in line:
-            parts = line.split('=', 1)
-            left = parts[0].strip()
-            right = parts[1].strip()
-
-            # 检查左边是否是变量名（不包含运算符）
-            if re.match(r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$', left):
-                label = left
-                expr = right
-                is_assignment = True
-
         try:
             # 检查表达式是否包含位运算符
-            has_bitwise = any(op in expr for op in ['<<', '>>', '&', '|', '^', '~'])
+            has_bitwise = any(op in line for op in ['<<', '>>', '&', '|', '^', '~'])
 
             # 如果包含位运算或16进制/2进制，使用16进制格式替换变量
             use_hex_in_comment = has_hex_bin or has_bitwise
 
             # 替换变量
-            expr_with_vars, undefined_vars = self._replace_variables(expr, use_hex_format=use_hex_in_comment)
+            expr_with_vars, undefined_vars = self._replace_variables(line, use_hex_format=use_hex_in_comment)
 
             # 如果有未定义的变量，返回错误
             if undefined_vars:
@@ -116,22 +114,22 @@ class CalculatorPaperAdvanced:
             # 计算表达式
             result = self.evaluate(expr_with_vars, has_hex_bin)
 
-            # 保存变量
-            if label:
+            # 保存变量（只有非 bitmap 调用才保存）
+            if label and not use_bitmap:
                 self.variables[label] = result
 
             # 返回结果和替换后的表达式（如果有变量替换）
-            replaced_expr = expr_with_vars if expr_with_vars != expr else None
+            replaced_expr = expr_with_vars if expr_with_vars != line else None
 
             # 生成位显示信息
-            # 只有当使用了 bitmap 关键字时才显示位索引
+            # 只有当使用了 bitmap 函数时才显示位索引
             bit_info = None
-            if use_bitmap and self.bit_display_mode:
+            if use_bitmap and bitmap_endian:
                 # 如果结果是整数值（可能是float类型），转换为int
                 if isinstance(result, (int, float)) and result >= 0:
                     int_result = int(result)
                     if int_result == result:  # 确保是整数值
-                        bit_info = self._generate_bit_display(int_result)
+                        bit_info = self._generate_bit_display(int_result, bitmap_endian)
 
             # 返回结果，标签，替换表达式，位信息，是否使用bitmap
             return result, label, replaced_expr, bit_info, use_bitmap
@@ -258,8 +256,13 @@ class CalculatorPaperAdvanced:
         except Exception as e:
             raise ValueError(f"计算错误: {str(e)}")
 
-    def _generate_bit_display(self, value):
-        """生成位显示信息"""
+    def _generate_bit_display(self, value, endian_mode):
+        """生成位显示信息
+        
+        Args:
+            value: 要显示的整数值
+            endian_mode: 字节序模式 ('big' 或 'little')
+        """
         if not isinstance(value, int) or value < 0:
             return None
 
@@ -288,7 +291,7 @@ class CalculatorPaperAdvanced:
         # 不管大端小端，二进制位都从MSB到LSB显示（从左到右）
         # 位索引的含义：位0是LSB，位31是MSB
 
-        if self.bit_display_mode == 'little':
+        if endian_mode == 'little':
             # 小端字节序：位索引从左到右递增 0→31
             if self.language == 'en':
                 result_lines.append("  Bit indices (Little Endian):")
@@ -326,7 +329,7 @@ class CalculatorPaperAdvanced:
             result_lines.append('    ' + ''.join(index_parts))
             result_lines.append('    ' + ''.join(bit_parts))
 
-        elif self.bit_display_mode == 'big':
+        elif endian_mode == 'big':
             # 大端字节序：位索引从左到右递减 31→0
             if self.language == 'en':
                 result_lines.append("  Bit indices (Big Endian):")
@@ -435,12 +438,8 @@ class CalculatorPaperAdvanced:
                 if isinstance(result, int):
                     # 整数
                     if use_bitmap:
-                        # 使用 bitmap 关键字：显示十进制、十六进制和二进制
+                        # 使用 bitmap 函数：只显示十进制
                         result_str = str(result)
-                        if result >= 0:
-                            hex_str = f"0x{result:X}"
-                            bin_str = f"0b{result:b}"
-                            result_str = f"{result} ({hex_str}, {bin_str})"
                     else:
                         # 未使用 bitmap：只显示十进制
                         result_str = str(result)
@@ -451,11 +450,19 @@ class CalculatorPaperAdvanced:
 
                 padding = ' ' * (max_line_len - len(line) + 2)
 
-                # 如果有变量替换，显示替换后的表达式
-                if extra_info:
-                    output.append(f"{line}{padding}= {result_str}  # {extra_info}")
+                # bitmap 调用不显示赋值，只显示结果
+                if use_bitmap:
+                    # 如果有变量替换，显示替换后的表达式
+                    if extra_info:
+                        output.append(f"{line}{padding}= {result_str}  # {extra_info}")
+                    else:
+                        output.append(f"{line}{padding}= {result_str}")
                 else:
-                    output.append(f"{line}{padding}= {result_str}")
+                    # 普通计算，显示赋值
+                    if extra_info:
+                        output.append(f"{line}{padding}= {result_str}  # {extra_info}")
+                    else:
+                        output.append(f"{line}{padding}= {result_str}")
 
                 # 如果有位显示信息，添加到输出
                 if bit_info:
@@ -485,15 +492,13 @@ Examples (示例):
   color = 0xFF8040
   red = (color >> 16) & 0xFF
 
-  # Endianness setting (字节序设置)
-  endian: big     # Big endian (大端)
-  endian: little  # Little endian (小端)
-  endian: none    # Disable (关闭)
-
-  # Bitmap keyword for bit structure (bitmap关键字查看位结构)
-  endian: big
-  bitmap view = 0xFF  # Shows hex, binary, and bit indices
-                      # 显示16进制、2进制和位索引
+  # bitmap function for bit structure (bitmap函数查看位结构)
+  bitmap(0xFF)        # Little endian (default) (小端，默认)
+  bitmap(0xFF, 0)     # Little endian (小端)
+  bitmap(0xFF, 1)     # Big endian (大端)
+  
+  # Note: bitmap() can only be used standalone (注意：bitmap()只能单独使用)
+  # Cannot assign to variable or use in expressions (不能赋值或参与计算)
 
   # Percentage calculation (百分数计算)
   price = 100
@@ -528,15 +533,13 @@ Examples (示例):
         print("   - OR: |           (e.g., 0xF0 | 0x0F)")
         print("   - XOR: ^          (e.g., 0xFF ^ 0xAA)")
         print("   - NOT: ~          (e.g., ~0b1010)")
-        print("7. Endianness display:")
-        print("   - endian: little  (Little Endian)")
-        print("   - endian: big     (Big Endian)")
-        print("   - endian: none    (Disable)")
-        print("8. bitmap keyword:")
-        print("   - Without bitmap: Show decimal only")
-        print("   - With bitmap: Show decimal, hex, binary and bit indices")
-        print("   - Example: bitmap a = 0xFF")
-        print("9. Lines starting with # are comments")
+        print("7. bitmap function:")
+        print("   - bitmap(value)      (Little Endian, default)")
+        print("   - bitmap(value, 0)   (Little Endian)")
+        print("   - bitmap(value, 1)   (Big Endian)")
+        print("   - Note: Can only be used standalone")
+        print("   - Example: bitmap(0xFF, 1)")
+        print("8. Lines starting with # are comments")
         print("10. Type 'exit' or 'quit' to exit")
         print("11. Type 'calc' to start calculation")
         print("=" * 80)
@@ -544,25 +547,22 @@ Examples (示例):
 
         example = """# Bitwise operations example
 
-# Set little endian display
-endian: little
-
 # Normal calculation (decimal only)
 a = 0xFF
 b = 0x0F
 sum = a + b
 
-# View bit structure with bitmap
-bitmap view_a = a
-bitmap view_b = b
+# View bit structure with bitmap (little endian)
+bitmap(a, 0)
+bitmap(b)
 
 # Bitwise operations (decimal only)
 and_result = a & b
 or_result = a | b
 
-# View bitwise operation results with bitmap
-bitmap view_and = and_result
-bitmap view_or = or_result
+# View bitwise operation results with bitmap (big endian)
+bitmap(and_result, 1)
+bitmap(or_result, 1)
 """
 
         print("Example input:")
@@ -591,15 +591,13 @@ bitmap view_or = or_result
         print("   - 或: |     (例: 0xF0 | 0x0F)")
         print("   - 异或: ^   (例: 0xFF ^ 0xAA)")
         print("   - 非: ~     (例: ~0b1010)")
-        print("7. 字节序显示:")
-        print("   - endian: little  (小端字节序)")
-        print("   - endian: big     (大端字节序)")
-        print("   - endian: none    (关闭)")
-        print("8. bitmap 关键字:")
-        print("   - 不使用 bitmap: 只显示十进制")
-        print("   - 使用 bitmap: 显示十进制、16进制、2进制和位索引")
-        print("   - 示例: bitmap a = 0xFF")
-        print("9. 以 # 开头的行为注释")
+        print("7. bitmap 函数:")
+        print("   - bitmap(数值)       (小端字节序，默认)")
+        print("   - bitmap(数值, 0)    (小端字节序)")
+        print("   - bitmap(数值, 1)    (大端字节序)")
+        print("   - 注意：只能单独使用")
+        print("   - 示例: bitmap(0xFF, 1)")
+        print("8. 以 # 开头的行为注释")
         print("10. 输入 'exit' 或 'quit' 退出")
         print("11. 输入 'calc' 开始计算")
         print("=" * 80)
@@ -607,25 +605,22 @@ bitmap view_or = or_result
 
         example = """# 位运算示例
 
-# 设置小端字节序显示
-endian: little
-
 # 普通计算（只显示十进制）
 a = 0xFF
 b = 0x0F
 和 = a + b
 
-# 使用 bitmap 查看位结构
-bitmap 查看a = a
-bitmap 查看b = b
+# 使用 bitmap 查看位结构（小端字节序）
+bitmap(a, 0)
+bitmap(b)
 
 # 位运算（只显示十进制）
 与运算 = a & b
 或运算 = a | b
 
-# 使用 bitmap 查看位运算结果
-bitmap 查看与运算 = 与运算
-bitmap 查看或运算 = 或运算
+# 使用 bitmap 查看位运算结果（大端字节序）
+bitmap(与运算, 1)
+bitmap(或运算, 1)
 """
 
         print("示例输入:")
