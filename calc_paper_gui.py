@@ -39,6 +39,11 @@ class CalculatorGUIAdvanced:
 
         # 创建计算器实例
         self.calculator = CalculatorPaperAdvanced(language=self.language)
+        
+        # GUI专用的历史记录（保存输入和输出文本）
+        self.gui_history = []  # 存储 (input_text, output_text) 元组
+        self.gui_history_index = -1  # 当前历史位置
+        self.last_saved_input = ""  # 上次保存的输入内容
 
         # 创建界面
         self.create_widgets()
@@ -48,6 +53,12 @@ class CalculatorGUIAdvanced:
 
         # 绑定窗口大小变化事件
         self.root.bind('<Configure>', self.on_window_configure)
+        
+        # 保存初始空白状态
+        self.root.after(100, self.save_initial_state)
+        
+        # 绑定输入框的修改事件，自动保存历史
+        self.input_text.bind('<<Modified>>', self.on_input_modified)
 
     def on_window_configure(self, event):
         """窗口大小变化时的处理"""
@@ -82,6 +93,14 @@ class CalculatorGUIAdvanced:
             clear_text = "Clear (Ctrl+D)" if self.language == 'en' else "清空 (Ctrl+D)"
             self.clear_button.config(text=clear_text)
 
+        if hasattr(self, 'undo_button'):
+            undo_text = "Undo (Ctrl+Z)" if self.language == 'en' else "撤销 (Ctrl+Z)"
+            self.undo_button.config(text=undo_text)
+
+        if hasattr(self, 'redo_button'):
+            redo_text = "Redo (Ctrl+Y)" if self.language == 'en' else "恢复 (Ctrl+Y)"
+            self.redo_button.config(text=redo_text)
+
         if hasattr(self, 'example_button'):
             example_text = "Load Example (Ctrl+L)" if self.language == 'en' else "加载示例 (Ctrl+L)"
             self.example_button.config(text=example_text)
@@ -105,6 +124,9 @@ class CalculatorGUIAdvanced:
 
         # 更新状态栏
         self.update_initial_font_display()
+        
+        # 更新撤销/恢复按钮状态
+        self.update_undo_redo_buttons()
 
     def increase_font(self):
         """放大字体"""
@@ -276,6 +298,34 @@ class CalculatorGUIAdvanced:
         )
         self.clear_button.pack(side=tk.LEFT, padx=3)
 
+        # 撤销按钮
+        undo_text = "Undo (Ctrl+Z)" if self.language == 'en' else "撤销 (Ctrl+Z)"
+        self.undo_button = tk.Button(
+            self.scrollable_frame,
+            text=undo_text,
+            command=self.undo,
+            bg="#FF9800",
+            fg="white",
+            font=("Arial", 10),
+            padx=15,
+            pady=3
+        )
+        self.undo_button.pack(side=tk.LEFT, padx=3)
+
+        # 恢复按钮
+        redo_text = "Redo (Ctrl+Y)" if self.language == 'en' else "恢复 (Ctrl+Y)"
+        self.redo_button = tk.Button(
+            self.scrollable_frame,
+            text=redo_text,
+            command=self.redo,
+            bg="#FF9800",
+            fg="white",
+            font=("Arial", 10),
+            padx=15,
+            pady=3
+        )
+        self.redo_button.pack(side=tk.LEFT, padx=3)
+
         # 加载示例按钮
         example_text = "Load Example (Ctrl+L)" if self.language == 'en' else "加载示例 (Ctrl+L)"
         self.example_button = tk.Button(
@@ -441,6 +491,10 @@ class CalculatorGUIAdvanced:
         self.root.bind('<Control-Return>', lambda e: self.calculate())
         self.root.bind('<Control-d>', lambda e: self.clear_all())
         self.root.bind('<Control-D>', lambda e: self.clear_all())
+        self.root.bind('<Control-z>', lambda e: self.undo())
+        self.root.bind('<Control-Z>', lambda e: self.undo())
+        self.root.bind('<Control-y>', lambda e: self.redo())
+        self.root.bind('<Control-Y>', lambda e: self.redo())
         self.root.bind('<Control-l>', lambda e: self.load_example())
         self.root.bind('<Control-L>', lambda e: self.load_example())
         self.root.bind('<Control-o>', lambda e: self.open_file())
@@ -483,6 +537,13 @@ class CalculatorGUIAdvanced:
 
             status_text = "Calculation completed" if self.language == 'en' else "计算完成"
             self.status_bar.config(text=status_text)
+            
+            # 保存到GUI历史记录
+            self.save_gui_state(input_content, output)
+            self.last_saved_input = input_content
+            
+            # 更新撤销/恢复按钮状态
+            self.update_undo_redo_buttons()
 
         except Exception as e:
             error_title = "Error" if self.language == 'en' else "错误"
@@ -550,6 +611,11 @@ class CalculatorGUIAdvanced:
         self.output_text.config(state=tk.NORMAL)
         self.output_text.delete("1.0", tk.END)
         self.output_text.config(state=tk.DISABLED)
+        
+        # 保存清空后的状态
+        self.save_gui_state("", "")
+        self.last_saved_input = ""
+        
         status_text = "Cleared" if self.language == 'en' else "已清空"
         self.status_bar.config(text=status_text)
 
@@ -613,8 +679,19 @@ bitmap(颜色, 1)
 折扣 = 价格 * 15%
 实付 = 价格 - 折扣
 """
+        # 临时解绑修改事件
+        self.input_text.unbind('<<Modified>>')
+        
         self.input_text.delete("1.0", tk.END)
         self.input_text.insert("1.0", example)
+        
+        # 保存加载示例后的状态
+        self.save_gui_state(example, "")
+        self.last_saved_input = example
+        
+        # 重新绑定修改事件
+        self.input_text.bind('<<Modified>>', self.on_input_modified)
+        
         status_text = "Example loaded" if self.language == 'en' else "已加载示例"
         self.status_bar.config(text=status_text)
 
@@ -631,8 +708,19 @@ bitmap(颜色, 1)
                 with open(filename, 'r', encoding='utf-8') as f:
                     content = f.read()
 
+                # 临时解绑修改事件
+                self.input_text.unbind('<<Modified>>')
+                
                 self.input_text.delete("1.0", tk.END)
                 self.input_text.insert("1.0", content)
+                
+                # 保存打开文件后的状态
+                self.save_gui_state(content, "")
+                self.last_saved_input = content
+                
+                # 重新绑定修改事件
+                self.input_text.bind('<<Modified>>', self.on_input_modified)
+                
                 status_text = f"Opened: {filename}" if self.language == 'en' else f"已打开: {filename}"
                 self.status_bar.config(text=status_text)
             except Exception as e:
@@ -661,6 +749,133 @@ bitmap(颜色, 1)
                 error_title = "Error" if self.language == 'en' else "错误"
                 error_msg = f"Cannot save file: {str(e)}" if self.language == 'en' else f"无法保存文件：{str(e)}"
                 messagebox.showerror(error_title, error_msg)
+
+    def save_gui_state(self, input_text, output_text):
+        """保存GUI状态到历史记录"""
+        # 如果当前不在历史末尾，删除后面的历史
+        if self.gui_history_index < len(self.gui_history) - 1:
+            self.gui_history = self.gui_history[:self.gui_history_index + 1]
+        
+        # 保存当前状态
+        self.gui_history.append((input_text, output_text))
+        self.gui_history_index = len(self.gui_history) - 1
+        
+        # 限制历史记录数量（最多保存50个状态）
+        if len(self.gui_history) > 50:
+            self.gui_history.pop(0)
+            self.gui_history_index -= 1
+        
+        # 更新按钮状态
+        self.update_undo_redo_buttons()
+
+    def save_initial_state(self):
+        """保存初始空白状态"""
+        input_content = self.input_text.get("1.0", "end-1c")
+        output_content = self.output_text.get("1.0", "end-1c")
+        self.save_gui_state(input_content, output_content)
+        self.last_saved_input = input_content
+
+    def on_input_modified(self, event):
+        """输入框内容修改时的回调"""
+        # 重置修改标志
+        if self.input_text.edit_modified():
+            self.input_text.edit_modified(False)
+            
+            # 延迟保存，避免每次按键都保存（等待500ms无输入后保存）
+            if hasattr(self, '_save_timer'):
+                self.root.after_cancel(self._save_timer)
+            
+            self._save_timer = self.root.after(500, self.auto_save_input)
+
+    def auto_save_input(self):
+        """自动保存输入内容"""
+        current_input = self.input_text.get("1.0", "end-1c")
+        
+        # 只有当内容真正改变时才保存
+        if current_input != self.last_saved_input:
+            output_content = self.output_text.get("1.0", "end-1c")
+            self.save_gui_state(current_input, output_content)
+            self.last_saved_input = current_input
+
+    def undo(self):
+        """撤销操作"""
+        if self.gui_history_index > 0:
+            self.gui_history_index -= 1
+            input_text, output_text = self.gui_history[self.gui_history_index]
+            
+            # 临时解绑修改事件，避免触发自动保存
+            self.input_text.unbind('<<Modified>>')
+            
+            # 恢复输入
+            self.input_text.delete("1.0", tk.END)
+            self.input_text.insert("1.0", input_text)
+            self.last_saved_input = input_text
+            
+            # 恢复输出
+            self.output_text.config(state=tk.NORMAL)
+            self.output_text.delete("1.0", tk.END)
+            self.output_text.insert("1.0", output_text)
+            self.apply_syntax_highlighting()
+            self.output_text.config(state=tk.DISABLED)
+            
+            # 重新绑定修改事件
+            self.input_text.bind('<<Modified>>', self.on_input_modified)
+            
+            status_text = "Undo completed" if self.language == 'en' else "撤销完成"
+            self.status_bar.config(text=status_text)
+            
+            # 更新按钮状态
+            self.update_undo_redo_buttons()
+        else:
+            status_text = "Nothing to undo" if self.language == 'en' else "无可撤销的操作"
+            self.status_bar.config(text=status_text)
+
+    def redo(self):
+        """恢复操作"""
+        if self.gui_history_index < len(self.gui_history) - 1:
+            self.gui_history_index += 1
+            input_text, output_text = self.gui_history[self.gui_history_index]
+            
+            # 临时解绑修改事件，避免触发自动保存
+            self.input_text.unbind('<<Modified>>')
+            
+            # 恢复输入
+            self.input_text.delete("1.0", tk.END)
+            self.input_text.insert("1.0", input_text)
+            self.last_saved_input = input_text
+            
+            # 恢复输出
+            self.output_text.config(state=tk.NORMAL)
+            self.output_text.delete("1.0", tk.END)
+            self.output_text.insert("1.0", output_text)
+            self.apply_syntax_highlighting()
+            self.output_text.config(state=tk.DISABLED)
+            
+            # 重新绑定修改事件
+            self.input_text.bind('<<Modified>>', self.on_input_modified)
+            
+            status_text = "Redo completed" if self.language == 'en' else "恢复完成"
+            self.status_bar.config(text=status_text)
+            
+            # 更新按钮状态
+            self.update_undo_redo_buttons()
+        else:
+            status_text = "Nothing to redo" if self.language == 'en' else "无可恢复的操作"
+            self.status_bar.config(text=status_text)
+
+    def update_undo_redo_buttons(self):
+        """更新撤销/恢复按钮的启用状态"""
+        if hasattr(self, 'undo_button'):
+            if self.gui_history_index > 0:
+                self.undo_button.config(state=tk.NORMAL)
+            else:
+                self.undo_button.config(state=tk.DISABLED)
+        
+        if hasattr(self, 'redo_button'):
+            if self.gui_history_index < len(self.gui_history) - 1:
+                self.redo_button.config(state=tk.NORMAL)
+            else:
+                self.redo_button.config(state=tk.DISABLED)
 
 
 def main():
