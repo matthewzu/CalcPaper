@@ -28,7 +28,7 @@ import re
 import sys
 import argparse
 
-VERSION = "1.0"
+VERSION = "1.2"
 
 
 class CalculatorPaperAdvanced:
