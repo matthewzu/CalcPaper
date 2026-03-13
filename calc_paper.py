@@ -38,10 +38,63 @@ class CalculatorPaperAdvanced:
         self.variables = {}
         self.bit_display_mode = None  # 'little' 或 'big' 或 None
         self.language = language  # 'zh' 或 'en'
+        
+        # 撤销/恢复功能的历史记录
+        self.history = []  # 存储历史状态
+        self.history_index = -1  # 当前历史位置
 
     def set_language(self, language):
         """设置语言"""
         self.language = language
+    
+    def swap_endian(self, value, byte_size=None):
+        """字节序交换函数
+        
+        Args:
+            value: 要交换的整数值
+            byte_size: 字节数（1, 2, 4, 8），如果为None则自动检测
+            
+        Returns:
+            交换后的整数值
+        """
+        if not isinstance(value, (int, float)):
+            raise ValueError("swap() 只能用于整数")
+        
+        value = int(value)
+        if value < 0:
+            raise ValueError("swap() 不支持负数")
+        
+        # 自动检测字节数
+        if byte_size is None:
+            if value == 0:
+                byte_size = 1
+            else:
+                # 计算需要的字节数（向上取整到 1, 2, 4, 8）
+                bit_len = value.bit_length()
+                if bit_len <= 8:
+                    byte_size = 1
+                elif bit_len <= 16:
+                    byte_size = 2
+                elif bit_len <= 32:
+                    byte_size = 4
+                else:
+                    byte_size = 8
+        
+        # 提取各字节并反转
+        bytes_list = []
+        for i in range(byte_size):
+            byte_val = (value >> (i * 8)) & 0xFF
+            bytes_list.append(byte_val)
+        
+        # 反转字节顺序
+        bytes_list.reverse()
+        
+        # 重新组合
+        result = 0
+        for i, byte_val in enumerate(bytes_list):
+            result |= (byte_val << (i * 8))
+        
+        return result
 
     def parse_line(self, line):
         """解析单行表达式"""
@@ -57,7 +110,8 @@ class CalculatorPaperAdvanced:
         # 检查是否使用了 bitmap 函数（只能单独使用，不能赋值或参与计算）
         use_bitmap = False
         bitmap_endian = None
-        bitmap_pattern = r'^bitmap\s*\(\s*([^,)]+)(?:\s*,\s*([01]))?\s*\)$'
+        # 支持嵌套括号，如 bitmap(swap(x), 1)
+        bitmap_pattern = r'^bitmap\s*\(\s*(.+?)(?:\s*,\s*([01]))?\s*\)$'
         bitmap_match = re.match(bitmap_pattern, line, re.IGNORECASE)
         
         if bitmap_match:
@@ -156,14 +210,15 @@ class CalculatorPaperAdvanced:
         expr_protected = re.sub(hex_bin_pattern, protect_hex_bin, expr)
 
         # 找出所有可能的变量名（中文、英文、数字、下划线）
+        # 但要排除 swap 和 bitmap 函数名
         pattern = r'\b([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\b'
 
         undefined_vars = []
 
         def replace_func(match):
             var_name = match.group(1)
-            # 跳过占位符
-            if var_name.startswith('__PROTECTED_'):
+            # 跳过占位符和函数名
+            if var_name.startswith('__PROTECTED_') or var_name.lower() in ['swap', 'bitmap']:
                 return var_name
 
             if var_name in self.variables:
@@ -227,6 +282,28 @@ class CalculatorPaperAdvanced:
 
         # 转换16进制和2进制
         expression = self._convert_hex_bin(expression)
+        
+        # 处理 swap() 函数调用（递归处理，从内到外）
+        max_iterations = 10  # 防止无限循环
+        iteration = 0
+        while 'swap(' in expression.lower() and iteration < max_iterations:
+            swap_pattern = r'swap\s*\(\s*([^()]+)\s*\)'
+            match = re.search(swap_pattern, expression, flags=re.IGNORECASE)
+            if not match:
+                break
+            
+            inner_expr = match.group(1)
+            # 计算内部表达式
+            try:
+                inner_value = eval(inner_expr)
+                # 执行字节序交换
+                swapped = self.swap_endian(inner_value)
+                # 替换整个 swap(...) 为结果
+                expression = expression[:match.start()] + str(swapped) + expression[match.end():]
+            except Exception as e:
+                raise ValueError(f"swap() 函数错误: {str(e)}")
+            
+            iteration += 1
 
         # 检查是否包含位运算符
         has_bitwise = any(op in expression for op in ['<<', '>>', '&', '|', '^', '~'])
@@ -272,65 +349,29 @@ class CalculatorPaperAdvanced:
         else:
             bit_count = ((value.bit_length() + 7) // 8) * 8
 
-        # 生成二进制字符串（从MSB到LSB）
+        # 生成二进制字符串（从MSB到LSB，保留前导0）
         bin_str = format(value, f'0{bit_count}b')
 
         result_lines = []
         
         # 根据语言选择文本
         if self.language == 'en':
-            result_lines.append(f"  Hexadecimal: 0x{value:X}")
+            # 保留前导0的16进制表示
+            hex_width = bit_count // 4
+            result_lines.append(f"  Hexadecimal: 0x{value:0{hex_width}X}")
             result_lines.append(f"  Binary: 0b{bin_str}")
             result_lines.append(f"  Bits: {bit_count} bits ({bit_count // 8} bytes)")
         else:
-            result_lines.append(f"  十六进制: 0x{value:X}")
+            # 保留前导0的16进制表示
+            hex_width = bit_count // 4
+            result_lines.append(f"  十六进制: 0x{value:0{hex_width}X}")
             result_lines.append(f"  二进制: 0b{bin_str}")
             result_lines.append(f"  位数: {bit_count} bits ({bit_count // 8} bytes)")
 
         # 生成位索引表格
-        # 不管大端小端，二进制位都从MSB到LSB显示（从左到右）
-        # 位索引的含义：位0是LSB，位31是MSB
-
-        if endian_mode == 'little':
-            # 小端字节序：位索引从左到右递增 0→31
-            if self.language == 'en':
-                result_lines.append("  Bit indices (Little Endian):")
-            else:
-                result_lines.append("  位索引 (小端字节序):")
-
-            index_parts = []
-            bit_parts = []
-
-            # 从MSB到LSB显示（bin_str从左到右）
-            for i in range(0, bit_count, 4):
-                # 每4位一组
-                nibble_bits = bin_str[i:i+4]
-
-                # 小端：从左到右 0→31
-                indices = [str(i + j) for j in range(4)]
-                bits = [nibble_bits[j] for j in range(4)]
-
-                # 计算这组的最大宽度
-                max_width = max(len(idx) for idx in indices)
-
-                # 格式化索引（右对齐）
-                formatted_indices = [f"{idx:>{max_width}}" for idx in indices]
-                # 格式化位值（居中对齐到索引宽度）
-                formatted_bits = [f"{bit:^{max_width}}" for bit in bits]
-
-                index_parts.append('|' + ' '.join(formatted_indices) + ' ')
-                bit_parts.append('|' + ' '.join(formatted_bits) + ' ')
-
-            # 添加结束符
-            index_parts.append('|')
-            bit_parts.append('|')
-
-            # 输出
-            result_lines.append('    ' + ''.join(index_parts))
-            result_lines.append('    ' + ''.join(bit_parts))
-
-        elif endian_mode == 'big':
-            # 大端字节序：位索引从左到右递减 31→0
+        if endian_mode == 'big':
+            # 大端字节序：MSB（最高位）从0开始编码
+            # 位索引从左到右：0, 1, 2, ..., 31
             if self.language == 'en':
                 result_lines.append("  Bit indices (Big Endian):")
             else:
@@ -344,17 +385,57 @@ class CalculatorPaperAdvanced:
                 # 每4位一组
                 nibble_bits = bin_str[i:i+4]
 
-                # 大端：从左到右 31→0
-                indices = [str(bit_count - 1 - i - j) for j in range(4)]
-                bits = [nibble_bits[j] for j in range(4)]
+                # 大端：MSB从0开始，从左到右 0→31
+                indices = [str(i + j) for j in range(4)]
+                bits = list(nibble_bits)
 
                 # 计算这组的最大宽度
                 max_width = max(len(idx) for idx in indices)
 
                 # 格式化索引（右对齐）
                 formatted_indices = [f"{idx:>{max_width}}" for idx in indices]
-                # 格式化位值（居中对齐到索引宽度）
-                formatted_bits = [f"{bit:^{max_width}}" for bit in bits]
+                # 格式化位值（右对齐，与索引对齐）
+                formatted_bits = [f"{bit:>{max_width}}" for bit in bits]
+
+                index_parts.append('|' + ' '.join(formatted_indices) + ' ')
+                bit_parts.append('|' + ' '.join(formatted_bits) + ' ')
+
+            # 添加结束符
+            index_parts.append('|')
+            bit_parts.append('|')
+
+            # 输出
+            result_lines.append('    ' + ''.join(index_parts))
+            result_lines.append('    ' + ''.join(bit_parts))
+
+        elif endian_mode == 'little':
+            # 小端字节序：LSB（最低位）从0开始编码
+            # 位索引从右到左：..., 2, 1, 0
+            # 但显示时从左到右：31, 30, ..., 1, 0
+            if self.language == 'en':
+                result_lines.append("  Bit indices (Little Endian):")
+            else:
+                result_lines.append("  位索引 (小端字节序):")
+
+            index_parts = []
+            bit_parts = []
+
+            # 从MSB到LSB显示（bin_str从左到右）
+            for i in range(0, bit_count, 4):
+                # 每4位一组
+                nibble_bits = bin_str[i:i+4]
+
+                # 小端：LSB从0开始，从左到右显示 31→0
+                indices = [str(bit_count - 1 - i - j) for j in range(4)]
+                bits = list(nibble_bits)
+
+                # 计算这组的最大宽度
+                max_width = max(len(idx) for idx in indices)
+
+                # 格式化索引（右对齐）
+                formatted_indices = [f"{idx:>{max_width}}" for idx in indices]
+                # 格式化位值（右对齐，与索引对齐）
+                formatted_bits = [f"{bit:>{max_width}}" for bit in bits]
 
                 index_parts.append('|' + ' '.join(formatted_indices) + ' ')
                 bit_parts.append('|' + ' '.join(formatted_bits) + ' ')
@@ -403,6 +484,59 @@ class CalculatorPaperAdvanced:
             else:
                 # 计算失败或特殊命令
                 self.results.append((None, label, extra_info, bit_info, use_bitmap))
+        
+        # 保存当前状态到历史记录
+        self.save_state()
+    
+    def save_state(self):
+        """保存当前状态到历史记录"""
+        # 如果当前不在历史末尾，删除后面的历史
+        if self.history_index < len(self.history) - 1:
+            self.history = self.history[:self.history_index + 1]
+        
+        # 保存当前状态
+        state = {
+            'lines': self.lines.copy(),
+            'results': self.results.copy(),
+            'variables': self.variables.copy()
+        }
+        self.history.append(state)
+        self.history_index = len(self.history) - 1
+        
+        # 限制历史记录数量（最多保存50个状态）
+        if len(self.history) > 50:
+            self.history.pop(0)
+            self.history_index -= 1
+    
+    def undo(self):
+        """撤销到上一个状态"""
+        if self.history_index > 0:
+            self.history_index -= 1
+            state = self.history[self.history_index]
+            self.lines = state['lines'].copy()
+            self.results = state['results'].copy()
+            self.variables = state['variables'].copy()
+            return True
+        return False
+    
+    def redo(self):
+        """恢复到下一个状态"""
+        if self.history_index < len(self.history) - 1:
+            self.history_index += 1
+            state = self.history[self.history_index]
+            self.lines = state['lines'].copy()
+            self.results = state['results'].copy()
+            self.variables = state['variables'].copy()
+            return True
+        return False
+    
+    def can_undo(self):
+        """检查是否可以撤销"""
+        return self.history_index > 0
+    
+    def can_redo(self):
+        """检查是否可以恢复"""
+        return self.history_index < len(self.history) - 1
 
     def format_output(self):
         """格式化输出结果"""
@@ -539,7 +673,12 @@ Examples (示例):
         print("   - bitmap(value, 1)   (Big Endian)")
         print("   - Note: Can only be used standalone")
         print("   - Example: bitmap(0xFF, 1)")
-        print("8. Lines starting with # are comments")
+        print("8. swap function:")
+        print("   - swap(value)        (Swap byte order)")
+        print("   - Can be used in expressions")
+        print("   - Example: a = swap(0x1234)  # Result: 0x3412")
+        print("   - Example: bitmap(swap(b))")
+        print("9. Lines starting with # are comments")
         print("10. Type 'exit' or 'quit' to exit")
         print("11. Type 'calc' to start calculation")
         print("=" * 80)
@@ -597,7 +736,12 @@ bitmap(or_result, 1)
         print("   - bitmap(数值, 1)    (大端字节序)")
         print("   - 注意：只能单独使用")
         print("   - 示例: bitmap(0xFF, 1)")
-        print("8. 以 # 开头的行为注释")
+        print("8. swap 函数:")
+        print("   - swap(数值)         (字节序交换)")
+        print("   - 可以用于表达式中")
+        print("   - 示例: a = swap(0x1234)  # 结果: 0x3412")
+        print("   - 示例: bitmap(swap(b))")
+        print("9. 以 # 开头的行为注释")
         print("10. 输入 'exit' 或 'quit' 退出")
         print("11. 输入 'calc' 开始计算")
         print("=" * 80)

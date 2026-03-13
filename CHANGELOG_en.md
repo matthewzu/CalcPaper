@@ -2,6 +2,30 @@
 
 # Changelog
 
+## [1.2] - 2026-03-13
+
+### Added
+- ✨ **swap() function**: Byte order swap function
+  - Auto-detect byte size (1, 2, 4, 8)
+  - Can be used in expressions and assignments: `a = swap(b)`, `c = swap(d) * 2`
+  - Works with bitmap: `bitmap(swap(x), 1)`
+  - Commonly used for network byte order conversion
+- 🔄 **Undo/Redo functionality** (CLI version):
+  - CLI: Automatically saves history states
+  - Saves up to 50 history states
+  - API: `undo()`, `redo()`, `can_undo()`, `can_redo()`
+
+### Improved
+- 🎨 **bitmap Display Optimization**:
+  - Preserve leading zeros in hexadecimal (e.g., `0x0F` not `0xF`)
+  - Big endian: MSB (most significant bit) starts from index 0, goes 0→31 left to right
+  - Little endian: LSB (least significant bit) starts from index 0, displays 31→0 left to right
+  - Bit values right-aligned with indices
+- 📖 Updated help information with swap() function description
+- 🎯 Optimized expression parsing to support function nesting
+
+---
+
 ## [1.1] - 2026-03-05
 
 ### Breaking Changes
