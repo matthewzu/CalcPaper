@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.2-blue.svg)
+![Version](https://img.shields.io/badge/version-1.3-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -21,15 +21,15 @@
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、16进制/2进制数值、字节序转换和撤销/恢复功能，让复杂计算像在纸上写算式一样简单。
 
-版本：1.2
+版本：1.3
 
 ### ✨ 核心特性
 
 - 🧮 **变量引用** - 定义变量，后续直接使用
 - 🔢 **多进制支持** - 16进制（0xFF）、2进制（0b1010）
 - ⚡ **位运算** - 支持 <<、>>、&、|、^、~ 等操作
-- 📊 **位结构显示** - 可视化查看每一位的值和索引
-- 🔄 **字节序支持** - bitmap 函数支持大端/小端显示
+- 📊 **位结构显示** - 可视化查看每一位的值和索引，支持宽度参数和前导0保留
+- 🔄 **字节序支持** - bitmap 函数支持大端/小端显示，自动对齐到 8/16/32/64 边界
 - 🔀 **字节序交换** - swap() 函数用于字节序转换
 - 💯 **百分数计算** - 直接使用 6.5%、10% 等
 - 🎨 **图形界面** - 友好的 GUI 界面（可选）
@@ -305,15 +305,15 @@ dist\CalcPaper.exe
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, hexadecimal/binary numbers, byte order swapping, and undo/redo functionality, making complex calculations as simple as writing on paper.
 
-Version: 1.2
+Version: 1.3
 
 ### ✨ Key Features
 
 - 🧮 **Variable References** - Define variables and use them later
 - 🔢 **Multi-base Support** - Hexadecimal (0xFF), Binary (0b1010)
 - ⚡ **Bitwise Operations** - Support <<, >>, &, |, ^, ~ operators
-- 📊 **Bit Structure Display** - Visualize each bit's value and index
-- 🔄 **Endianness Support** - bitmap function supports big/little endian display
+- 📊 **Bit Structure Display** - Visualize each bit's value and index, with width parameter and leading zero preservation
+- 🔄 **Endianness Support** - bitmap function supports big/little endian display, auto-aligns to 8/16/32/64 boundary
 - 🔀 **Byte Order Swap** - swap() function for endian conversion
 - 💯 **Percentage Calculation** - Direct use of 6.5%, 10%, etc.
 - 🎨 **GUI Interface** - User-friendly graphical interface (optional)

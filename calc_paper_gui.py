@@ -25,7 +25,7 @@ from tkinter import scrolledtext, messagebox, filedialog
 import re
 from calc_paper import CalculatorPaperAdvanced
 
-VERSION = "1.2"
+VERSION = "1.3"
 
 class CalculatorGUIAdvanced:
     def __init__(self, root):

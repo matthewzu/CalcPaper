@@ -28,7 +28,7 @@ import re
 import sys
 import argparse
 
-VERSION = "1.2"
+VERSION = "1.3"
 
 
 class CalculatorPaperAdvanced:
@@ -110,20 +110,29 @@ class CalculatorPaperAdvanced:
         # 检查是否使用了 bitmap 函数（只能单独使用，不能赋值或参与计算）
         use_bitmap = False
         bitmap_endian = None
+        bitmap_width = None  # 用户指定的位宽度
         # 支持嵌套括号，如 bitmap(swap(x), 1)
-        bitmap_pattern = r'^bitmap\s*\(\s*(.+?)(?:\s*,\s*([01]))?\s*\)$'
+        # 第3个参数为可选的宽度参数（8, 16, 32, 64）
+        bitmap_pattern = r'^bitmap\s*\(\s*(.+?)(?:\s*,\s*([01]))?(?:\s*,\s*(\d+))?\s*\)$'
         bitmap_match = re.match(bitmap_pattern, line, re.IGNORECASE)
         
         if bitmap_match:
             use_bitmap = True
             value_expr = bitmap_match.group(1).strip()
             endian_param = bitmap_match.group(2)
+            width_param = bitmap_match.group(3)
             
             # 设置临时字节序
             if endian_param == '1':
                 bitmap_endian = 'big'
             else:  # '0' 或 None
                 bitmap_endian = 'little'
+            
+            # 设置位宽度
+            if width_param is not None:
+                bitmap_width = int(width_param)
+                if bitmap_width <= 0:
+                    return None, None, f"错误: bitmap 宽度参数必须是正整数", None, False
             
             # 只保留值表达式用于计算
             line = value_expr
@@ -183,7 +192,9 @@ class CalculatorPaperAdvanced:
                 if isinstance(result, (int, float)) and result >= 0:
                     int_result = int(result)
                     if int_result == result:  # 确保是整数值
-                        bit_info = self._generate_bit_display(int_result, bitmap_endian)
+                        # 检测原始表达式中的前导0位数
+                        input_bit_width = self._detect_input_bit_width(value_expr)
+                        bit_info = self._generate_bit_display(int_result, bitmap_endian, bitmap_width, input_bit_width)
 
             # 返回结果，标签，替换表达式，位信息，是否使用bitmap
             return result, label, replaced_expr, bit_info, use_bitmap
@@ -333,21 +344,88 @@ class CalculatorPaperAdvanced:
         except Exception as e:
             raise ValueError(f"计算错误: {str(e)}")
 
-    def _generate_bit_display(self, value, endian_mode):
+    def _align_to_boundary(self, bits):
+        """将位数对齐到最接近的 8/16/32/64 边界
+        
+        Args:
+            bits: 需要的最小位数
+            
+        Returns:
+            对齐后的位数（8, 16, 32 或 64）
+        """
+        if bits <= 8:
+            return 8
+        elif bits <= 16:
+            return 16
+        elif bits <= 32:
+            return 32
+        elif bits <= 64:
+            return 64
+        else:
+            # 超过64位，按8位对齐
+            return ((bits + 7) // 8) * 8
+
+    def _detect_input_bit_width(self, expr):
+        """检测输入表达式中的位宽度（基于前导0）
+        
+        例如：0x00FF → 16位（4个hex字符 × 4位）
+              0b00001111 → 8位（8个bin字符）
+              0xFF → 8位（2个hex字符 × 4位）
+        
+        Returns:
+            检测到的位宽度，如果无法检测则返回None
+        """
+        expr = expr.strip()
+        
+        # 先检查是否是变量引用，如果是则查找变量的原始赋值
+        # 这里只处理直接的字面量
+        
+        # 检查16进制字面量
+        hex_match = re.match(r'^0[xX]([0-9a-fA-F]+)$', expr)
+        if hex_match:
+            hex_digits = hex_match.group(1)
+            return len(hex_digits) * 4  # 每个hex字符4位
+        
+        # 检查2进制字面量
+        bin_match = re.match(r'^0[bB]([01]+)$', expr)
+        if bin_match:
+            bin_digits = bin_match.group(1)
+            return len(bin_digits)
+        
+        return None
+
+    def _generate_bit_display(self, value, endian_mode, user_width=None, input_bit_width=None):
         """生成位显示信息
         
         Args:
             value: 要显示的整数值
             endian_mode: 字节序模式 ('big' 或 'little')
+            user_width: 用户指定的位宽度（8, 16, 32, 64），可选
+            input_bit_width: 从输入表达式检测到的位宽度（保留前导0），可选
         """
         if not isinstance(value, int) or value < 0:
             return None
 
-        # 确定需要的位数（至少8位，按8位对齐）
+        # 确定需要的最小位数
         if value == 0:
-            bit_count = 8
+            min_bits = 8
         else:
-            bit_count = ((value.bit_length() + 7) // 8) * 8
+            min_bits = value.bit_length()
+
+        # 确定最终位数
+        if user_width is not None:
+            # 用户显式指定了宽度
+            bit_count = user_width
+            if bit_count < min_bits:
+                # 宽度不够，自动扩展到能容纳值的最小宽度
+                bit_count = self._align_to_boundary(min_bits)
+        elif input_bit_width is not None:
+            # 使用输入表达式中检测到的位宽度（保留前导0）
+            # 对齐到最近的 8/16/32/64 边界
+            bit_count = self._align_to_boundary(max(min_bits, input_bit_width))
+        else:
+            # 缺省：对齐到最接近的 8/16/32/64 边界
+            bit_count = self._align_to_boundary(min_bits)
 
         # 生成二进制字符串（从MSB到LSB，保留前导0）
         bin_str = format(value, f'0{bit_count}b')
@@ -627,9 +705,11 @@ Examples (示例):
   red = (color >> 16) & 0xFF
 
   # bitmap function for bit structure (bitmap函数查看位结构)
-  bitmap(0xFF)        # Little endian (default) (小端，默认)
-  bitmap(0xFF, 0)     # Little endian (小端)
-  bitmap(0xFF, 1)     # Big endian (大端)
+  bitmap(0xFF)           # Little endian (default) (小端，默认)
+  bitmap(0xFF, 0)        # Little endian (小端)
+  bitmap(0xFF, 1)        # Big endian (大端)
+  bitmap(0xFF, 1, 32)    # Big endian, 32-bit width (大端，32位宽度)
+  bitmap(0x00FF)         # Leading zeros preserved (保留前导0)
   
   # Note: bitmap() can only be used standalone (注意：bitmap()只能单独使用)
   # Cannot assign to variable or use in expressions (不能赋值或参与计算)
@@ -668,9 +748,13 @@ Examples (示例):
         print("   - XOR: ^          (e.g., 0xFF ^ 0xAA)")
         print("   - NOT: ~          (e.g., ~0b1010)")
         print("7. bitmap function:")
-        print("   - bitmap(value)      (Little Endian, default)")
-        print("   - bitmap(value, 0)   (Little Endian)")
-        print("   - bitmap(value, 1)   (Big Endian)")
+        print("   - bitmap(value)           (Little Endian, default)")
+        print("   - bitmap(value, 0)        (Little Endian)")
+        print("   - bitmap(value, 1)        (Big Endian)")
+        print("   - bitmap(value, 0, 32)    (Little Endian, 32-bit width)")
+        print("   - bitmap(value, 1, 64)    (Big Endian, 64-bit width)")
+        print("   - Width: any positive integer (auto-align if omitted)")
+        print("   - Leading zeros are preserved for alignment")
         print("   - Note: Can only be used standalone")
         print("   - Example: bitmap(0xFF, 1)")
         print("8. swap function:")
@@ -731,9 +815,13 @@ bitmap(or_result, 1)
         print("   - 异或: ^   (例: 0xFF ^ 0xAA)")
         print("   - 非: ~     (例: ~0b1010)")
         print("7. bitmap 函数:")
-        print("   - bitmap(数值)       (小端字节序，默认)")
-        print("   - bitmap(数值, 0)    (小端字节序)")
-        print("   - bitmap(数值, 1)    (大端字节序)")
+        print("   - bitmap(数值)            (小端字节序，默认)")
+        print("   - bitmap(数值, 0)         (小端字节序)")
+        print("   - bitmap(数值, 1)         (大端字节序)")
+        print("   - bitmap(数值, 0, 32)     (小端字节序，32位宽度)")
+        print("   - bitmap(数值, 1, 64)     (大端字节序，64位宽度)")
+        print("   - 宽度: 任意正整数（缺省自动对齐）")
+        print("   - 前导0会被保留用于对齐")
         print("   - 注意：只能单独使用")
         print("   - 示例: bitmap(0xFF, 1)")
         print("8. swap 函数:")
