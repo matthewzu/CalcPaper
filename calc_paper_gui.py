@@ -24,15 +24,30 @@ import tkinter as tk
 from tkinter import scrolledtext, messagebox, filedialog, simpledialog
 import json
 import os
+import sys
 import re
 from calc_paper import CalculatorPaperAdvanced
 
 VERSION = "1.4"
 
-# 配置文件路径（与脚本同目录）
-CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(CONFIG_DIR, '.calcpaper_config.json')
-SESSION_FILE = os.path.join(CONFIG_DIR, '.calcpaper_session.json')
+# 配置文件路径
+# 默认为可执行文件所在目录；PyInstaller 打包后为 exe 所在目录
+def _get_exe_dir():
+    """获取可执行文件所在目录"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包后
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+DEFAULT_DATA_DIR = _get_exe_dir()
+BOOTSTRAP_CONFIG = os.path.join(DEFAULT_DATA_DIR, 'calcpaper_config.json')
+
+# 获取资源文件路径（兼容 PyInstaller 打包）
+def _resource_path(filename):
+    """获取资源文件的绝对路径，兼容 PyInstaller 打包"""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, filename)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
 
 # 默认快捷键配置
 DEFAULT_SHORTCUTS = {
@@ -131,37 +146,58 @@ class CalculatorGUIAdvanced:
     def _set_icon(self):
         """设置窗口图标"""
         try:
-            icon_path = os.path.join(CONFIG_DIR, 'calcpaper.ico')
+            icon_path = _resource_path('calcpaper.ico')
             if os.path.exists(icon_path):
                 self.root.iconbitmap(icon_path)
         except Exception:
             pass
 
     def load_config(self):
-        """加载配置文件"""
+        """加载配置文件
+        
+        先从默认位置（exe目录）读取配置，其中可能包含用户自定义的 data_dir。
+        然后用 data_dir 确定 config 和 session 文件的实际路径。
+        """
         defaults = {
             'language': 'en',
             'font_size': 10,
             'window_geometry': '1200x800',
-            'window_position': None,  # "x,y" 格式
+            'window_position': None,
+            'data_dir': DEFAULT_DATA_DIR,
             'shortcuts': DEFAULT_SHORTCUTS.copy(),
         }
+
+        # 第一步：从引导配置读取 data_dir
+        config = defaults.copy()
         try:
-            if os.path.exists(CONFIG_FILE):
-                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            if os.path.exists(BOOTSTRAP_CONFIG):
+                with open(BOOTSTRAP_CONFIG, 'r', encoding='utf-8') as f:
                     saved = json.load(f)
-                for k, v in defaults.items():
-                    if k not in saved:
-                        saved[k] = v
-                # 合并快捷键（保留新增的默认键）
+                config.update({k: saved[k] for k in saved if k in defaults})
                 merged_shortcuts = DEFAULT_SHORTCUTS.copy()
                 merged_shortcuts.update(saved.get('shortcuts', {}))
-                saved['shortcuts'] = merged_shortcuts
-                config = saved
-            else:
-                config = defaults
+                config['shortcuts'] = merged_shortcuts
         except Exception:
-            config = defaults
+            pass
+
+        # 确定数据目录
+        self.data_dir = config.get('data_dir', DEFAULT_DATA_DIR)
+        os.makedirs(self.data_dir, exist_ok=True)
+        self.config_file = os.path.join(self.data_dir, 'calcpaper_config.json')
+        self.session_file = os.path.join(self.data_dir, 'calcpaper_session.json')
+
+        # 第二步：如果 data_dir 不是默认目录，从实际 data_dir 重新读取完整配置
+        if self.config_file != BOOTSTRAP_CONFIG:
+            try:
+                if os.path.exists(self.config_file):
+                    with open(self.config_file, 'r', encoding='utf-8') as f:
+                        saved = json.load(f)
+                    config.update({k: saved[k] for k in saved if k in defaults})
+                    merged_shortcuts = DEFAULT_SHORTCUTS.copy()
+                    merged_shortcuts.update(saved.get('shortcuts', {}))
+                    config['shortcuts'] = merged_shortcuts
+            except Exception:
+                pass
 
         self.language = config['language']
         self.font_size = config['font_size']
@@ -189,11 +225,9 @@ class CalculatorGUIAdvanced:
 
     def save_config(self):
         """保存配置文件"""
-        # 获取窗口大小（不含位置）
         w = self.root.winfo_width()
         h = self.root.winfo_height()
         geo = f"{w}x{h}"
-        # 获取窗口位置
         x = self.root.winfo_x()
         y = self.root.winfo_y()
         pos = f"{x},{y}"
@@ -202,11 +236,17 @@ class CalculatorGUIAdvanced:
             'font_size': self.font_size,
             'window_geometry': geo,
             'window_position': pos,
+            'data_dir': self.data_dir,
             'shortcuts': self.shortcuts,
         }
         try:
-            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            os.makedirs(self.data_dir, exist_ok=True)
+            with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)
+            # 如果 data_dir 不是默认目录，在默认目录也保存一份引导配置（只含 data_dir）
+            if self.config_file != BOOTSTRAP_CONFIG:
+                with open(BOOTSTRAP_CONFIG, 'w', encoding='utf-8') as f:
+                    json.dump({'data_dir': self.data_dir}, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
 
@@ -221,7 +261,8 @@ class CalculatorGUIAdvanced:
                 'input': input_content,
                 'output': output_content,
             }
-            with open(SESSION_FILE, 'w', encoding='utf-8') as f:
+            os.makedirs(self.data_dir, exist_ok=True)
+            with open(self.session_file, 'w', encoding='utf-8') as f:
                 json.dump(session, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
@@ -229,8 +270,8 @@ class CalculatorGUIAdvanced:
     def load_session(self):
         """加载上次会话"""
         try:
-            if os.path.exists(SESSION_FILE):
-                with open(SESSION_FILE, 'r', encoding='utf-8') as f:
+            if os.path.exists(self.session_file):
+                with open(self.session_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
         except Exception:
             pass
@@ -541,29 +582,58 @@ class CalculatorGUIAdvanced:
         self._bound_keys = []
 
     def open_shortcut_config(self):
-        """打开快捷键配置对话框"""
+        """打开设置对话框（快捷键 + 数据目录）"""
         dialog = tk.Toplevel(self.root)
-        title = "Shortcut Configuration" if self.language == 'en' else "快捷键配置"
+        title = "Settings" if self.language == 'en' else "设置"
         dialog.title(title)
-        dialog.geometry("500x400")
+        dialog.geometry("550x480")
         dialog.transient(self.root)
         dialog.grab_set()
 
         names = SHORTCUT_NAMES_EN if self.language == 'en' else SHORTCUT_NAMES_ZH
 
-        # 说明文字
-        hint = "Click a shortcut field, then press the new key combination." if self.language == 'en' \
-            else "点击快捷键输入框，然后按下新的快捷键组合。"
-        tk.Label(dialog, text=hint, font=("Arial", 9), fg="gray").pack(pady=(10, 5))
+        # ===== 数据目录 =====
+        dir_frame = tk.LabelFrame(dialog,
+                                   text="Data Directory" if self.language == 'en' else "数据目录",
+                                   font=("Arial", 10, "bold"), padx=10, pady=5)
+        dir_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
 
-        # 滚动框架
-        canvas = tk.Canvas(dialog)
-        scrollbar = tk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+        dir_hint = "Config and session files are stored here." if self.language == 'en' \
+            else "配置文件和会话记录保存在此目录。"
+        tk.Label(dir_frame, text=dir_hint, font=("Arial", 9), fg="gray").pack(anchor="w")
+
+        dir_row = tk.Frame(dir_frame)
+        dir_row.pack(fill=tk.X, pady=3)
+        dir_entry = tk.Entry(dir_row, font=("Consolas", 10))
+        dir_entry.insert(0, self.data_dir)
+        dir_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+
+        def browse_dir():
+            d = filedialog.askdirectory(initialdir=self.data_dir,
+                                        title="Select Data Directory" if self.language == 'en' else "选择数据目录")
+            if d:
+                dir_entry.delete(0, tk.END)
+                dir_entry.insert(0, d)
+
+        tk.Button(dir_row, text="...", command=browse_dir, padx=8).pack(side=tk.LEFT)
+
+        # ===== 快捷键 =====
+        key_frame = tk.LabelFrame(dialog,
+                                   text="Keyboard Shortcuts" if self.language == 'en' else "快捷键",
+                                   font=("Arial", 10, "bold"), padx=10, pady=5)
+        key_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        hint = "Click a field, then press the new key combination." if self.language == 'en' \
+            else "点击输入框，然后按下新的快捷键组合。"
+        tk.Label(key_frame, text=hint, font=("Arial", 9), fg="gray").pack(anchor="w")
+
+        canvas = tk.Canvas(key_frame)
+        scrollbar = tk.Scrollbar(key_frame, orient="vertical", command=canvas.yview)
         scroll_frame = tk.Frame(canvas)
         scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         entries = {}
@@ -579,7 +649,6 @@ class CalculatorGUIAdvanced:
             entry.pack(side=tk.LEFT, padx=5)
             entries[action_name] = entry
 
-            # 按键捕获
             def make_capture(e_widget):
                 def on_key(event):
                     parts = []
@@ -589,7 +658,6 @@ class CalculatorGUIAdvanced:
                         parts.append('Shift')
                     if event.state & 0x8 or event.state & 0x80:
                         parts.append('Alt')
-
                     keysym = event.keysym
                     if keysym in ('Control_L', 'Control_R', 'Shift_L', 'Shift_R', 'Alt_L', 'Alt_R'):
                         return
@@ -601,18 +669,31 @@ class CalculatorGUIAdvanced:
 
             entry.bind('<Key>', make_capture(entry))
 
-        # 按钮
+        # ===== 按钮 =====
         btn_frame = tk.Frame(dialog)
         btn_frame.pack(pady=10)
 
-        def apply_shortcuts():
+        def apply_settings():
+            # 保存数据目录
+            new_dir = dir_entry.get().strip()
+            if new_dir and new_dir != self.data_dir:
+                if os.path.isdir(new_dir) or not os.path.exists(new_dir):
+                    self.data_dir = new_dir
+                    os.makedirs(self.data_dir, exist_ok=True)
+                    self.config_file = os.path.join(self.data_dir, 'calcpaper_config.json')
+                    self.session_file = os.path.join(self.data_dir, 'calcpaper_session.json')
+                else:
+                    messagebox.showwarning(
+                        "Warning" if self.language == 'en' else "警告",
+                        "Invalid directory path" if self.language == 'en' else "无效的目录路径")
+                    return
+            # 保存快捷键
             for action_name, entry in entries.items():
-                val = entry.get().strip()
-                self.shortcuts[action_name] = val
+                self.shortcuts[action_name] = entry.get().strip()
             self.bind_shortcuts()
             self.update_button_texts()
             self.save_config()
-            msg = "Shortcuts updated" if self.language == 'en' else "快捷键已更新"
+            msg = "Settings saved" if self.language == 'en' else "设置已保存"
             self.status_bar.config(text=msg)
             dialog.destroy()
 
@@ -620,12 +701,14 @@ class CalculatorGUIAdvanced:
             for action_name, entry in entries.items():
                 entry.delete(0, tk.END)
                 entry.insert(0, DEFAULT_SHORTCUTS.get(action_name, ''))
+            dir_entry.delete(0, tk.END)
+            dir_entry.insert(0, DEFAULT_DATA_DIR)
 
         save_text = "Save" if self.language == 'en' else "保存"
         reset_text = "Reset" if self.language == 'en' else "恢复默认"
         cancel_text = "Cancel" if self.language == 'en' else "取消"
 
-        tk.Button(btn_frame, text=save_text, command=apply_shortcuts, bg="#4CAF50", fg="white",
+        tk.Button(btn_frame, text=save_text, command=apply_settings, bg="#4CAF50", fg="white",
                   font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text=reset_text, command=reset_shortcuts,
                   font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)

@@ -59,8 +59,6 @@ venv.bak/
 *.xlsx
 ~$*.xlsx
 .history/
-.calcpaper_config.json
-.calcpaper_session.json
 
 # macOS
 .DS_Store
