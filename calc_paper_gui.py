@@ -89,6 +89,9 @@ class CalculatorGUIAdvanced:
         self.min_font_size = 8
         self.max_font_size = 32
 
+        # 设置窗口图标
+        self._set_icon()
+
         # 加载配置（语言、字体、窗口大小、快捷键）
         self.load_config()
 
@@ -114,6 +117,9 @@ class CalculatorGUIAdvanced:
         # 恢复上次会话
         self.root.after(100, self._restore_session_and_init)
 
+        # 恢复窗口位置（需要在窗口显示后）
+        self.root.after(150, self._apply_saved_position)
+
         # 绑定输入框的修改事件
         self.input_text.bind('<<Modified>>', self.on_input_modified)
 
@@ -122,12 +128,22 @@ class CalculatorGUIAdvanced:
 
     # ==================== 配置持久化 ====================
 
+    def _set_icon(self):
+        """设置窗口图标"""
+        try:
+            icon_path = os.path.join(CONFIG_DIR, 'calcpaper.ico')
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+        except Exception:
+            pass
+
     def load_config(self):
         """加载配置文件"""
         defaults = {
             'language': 'en',
             'font_size': 10,
             'window_geometry': '1200x800',
+            'window_position': None,  # "x,y" 格式
             'shortcuts': DEFAULT_SHORTCUTS.copy(),
         }
         try:
@@ -149,16 +165,43 @@ class CalculatorGUIAdvanced:
 
         self.language = config['language']
         self.font_size = config['font_size']
-        self.root.geometry(config['window_geometry'])
+        self._saved_geometry = config['window_geometry']
+        self._saved_position = config.get('window_position')
         self.shortcuts = config['shortcuts']
+
+        # 先设置窗口大小
+        self.root.geometry(self._saved_geometry)
+
+    def _apply_saved_position(self):
+        """在窗口显示后应用保存的位置"""
+        if self._saved_position:
+            try:
+                x, y = self._saved_position.split(',')
+                x, y = int(x), int(y)
+                # 确保窗口不会出现在屏幕外
+                screen_w = self.root.winfo_screenwidth()
+                screen_h = self.root.winfo_screenheight()
+                x = max(0, min(x, screen_w - 100))
+                y = max(0, min(y, screen_h - 100))
+                self.root.geometry(f"+{x}+{y}")
+            except Exception:
+                pass
 
     def save_config(self):
         """保存配置文件"""
-        geo = self.root.geometry()
+        # 获取窗口大小（不含位置）
+        w = self.root.winfo_width()
+        h = self.root.winfo_height()
+        geo = f"{w}x{h}"
+        # 获取窗口位置
+        x = self.root.winfo_x()
+        y = self.root.winfo_y()
+        pos = f"{x},{y}"
         config = {
             'language': self.language,
             'font_size': self.font_size,
             'window_geometry': geo,
+            'window_position': pos,
             'shortcuts': self.shortcuts,
         }
         try:
@@ -746,6 +789,8 @@ hex(颜色)
             try:
                 with open(filename, 'r', encoding='utf-8') as f:
                     content = f.read()
+                # 清理计算结果标注，提取原始表达式
+                content = self._strip_result_annotations(content)
                 self.input_text.unbind('<<Modified>>')
                 self.input_text.delete("1.0", tk.END)
                 self.input_text.insert("1.0", content)
@@ -755,6 +800,71 @@ hex(颜色)
                 self.status_bar.config(text=f"Opened: {filename}" if self.language == 'en' else f"已打开: {filename}")
             except Exception as e:
                 messagebox.showerror("Error" if self.language == 'en' else "错误", str(e))
+
+    def _strip_result_annotations(self, text):
+        """清理计算结果标注，提取原始输入表达式
+        
+        输出格式示例：
+          a = 0xFF        = 255
+          bitmap(a, 1)    = 255  # 255
+          hex(a)          = 0xFF  # 255
+          位索引行、十六进制行等（bitmap输出的附加行）
+        
+        需要：
+        - 去掉 bitmap/hex 输出的附加信息行（缩进的十六进制/二进制/位数/位索引行）
+        - 去掉结果部分（表达式后面多余的 = result 和 # comment）
+        """
+        lines = text.split('\n')
+        cleaned = []
+        for line in lines:
+            stripped = line.strip()
+            # 跳过 bitmap 输出的附加行（以空格开头的信息行）
+            if stripped and line.startswith('  ') and any(stripped.startswith(kw) for kw in [
+                '十六进制:', '二进制:', '位数:', '位索引',
+                'Hexadecimal:', 'Binary:', 'Bits:', 'Bit indices',
+                '|'
+            ]):
+                continue
+            # 空行和注释行保持不变
+            if not stripped or stripped.startswith('#'):
+                cleaned.append(line)
+                continue
+            # 处理带结果标注的行
+            # 格式: "原始表达式    = 结果  # 注释"
+            # 需要找到原始表达式中最后一个有意义的 = 之后的结果部分
+            # 策略：如果行中有多个 =，第一个是赋值，后面的是结果
+            if '=' in stripped:
+                # 检查是否是赋值表达式（如 a = 0xFF）
+                first_eq = stripped.index('=')
+                left = stripped[:first_eq].strip()
+                right_part = stripped[first_eq+1:].strip()
+                
+                # 检查左边是否是变量名
+                is_assignment = bool(re.match(r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$', left))
+                
+                if is_assignment:
+                    # 赋值行：a = 0xFF        = 255  # 注释
+                    # 需要提取 "a = 原始表达式"
+                    # 在 right_part 中找到结果分隔符（多个空格后的 =）
+                    # 用正则匹配：值部分  空格+= 结果
+                    match = re.match(r'^(.+?)\s{2,}=\s', right_part)
+                    if match:
+                        original_expr = match.group(1).strip()
+                        cleaned.append(f"{left} = {original_expr}")
+                    else:
+                        cleaned.append(stripped)
+                else:
+                    # 非赋值行（如 bitmap(a, 1)    = 255）
+                    # 找到多空格+= 的位置
+                    match = re.match(r'^(.+?)\s{2,}=\s', stripped)
+                    if match:
+                        original_expr = match.group(1).strip()
+                        cleaned.append(original_expr)
+                    else:
+                        cleaned.append(stripped)
+            else:
+                cleaned.append(stripped)
+        return '\n'.join(cleaned)
 
     def save_file(self):
         title = "Save File" if self.language == 'en' else "保存文件"
