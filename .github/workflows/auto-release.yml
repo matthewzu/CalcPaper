@@ -77,7 +77,8 @@ jobs:
     - name: Build
       run: |
         pip install pyinstaller
-        pyinstaller --onefile --windowed --name=CalcPaper --icon=calcpaper.ico --add-data "calcpaper.ico:." calc_paper_gui.py
+        # macOS 不支持 .ico 格式的图标，跳过 --icon 参数
+        pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." calc_paper_gui.py
         # 创建DMG
         mkdir dmg_temp
         cp -R dist/CalcPaper.app dmg_temp/
