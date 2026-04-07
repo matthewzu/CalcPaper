@@ -28,7 +28,7 @@ import re
 import sys
 import argparse
 
-VERSION = "1.3"
+VERSION = "1.4"
 
 
 class CalculatorPaperAdvanced:
@@ -100,23 +100,37 @@ class CalculatorPaperAdvanced:
         """解析单行表达式"""
         line = line.strip()
         if not line or line.startswith('#'):
-            return None, None, None, None, False
+            return None, None, None, None, False, None
 
         # 移除行内注释
         original_expr = line
         if '#' in line:
             line = line.split('#')[0].strip()
 
+        # 检查是否使用了 hex 函数（只能单独使用，不能赋值或参与计算）
+        use_hex_func = False
+
         # 检查是否使用了 bitmap 函数（只能单独使用，不能赋值或参与计算）
         use_bitmap = False
         bitmap_endian = None
-        bitmap_width = None  # 用户指定的位宽度
+        bitmap_width = None
+
+        hex_pattern = r'^hex\s*\(\s*(.+?)\s*\)$'
+        hex_func_match = re.match(hex_pattern, line, re.IGNORECASE)
+
         # 支持嵌套括号，如 bitmap(swap(x), 1)
-        # 第3个参数为可选的宽度参数（8, 16, 32, 64）
+        # 第3个参数为可选的宽度参数
         bitmap_pattern = r'^bitmap\s*\(\s*(.+?)(?:\s*,\s*([01]))?(?:\s*,\s*(\d+))?\s*\)$'
         bitmap_match = re.match(bitmap_pattern, line, re.IGNORECASE)
-        
-        if bitmap_match:
+
+        if hex_func_match:
+            use_hex_func = True
+            value_expr = hex_func_match.group(1).strip()
+            line = value_expr
+            label = None
+            is_assignment = False
+
+        elif bitmap_match:
             use_bitmap = True
             value_expr = bitmap_match.group(1).strip()
             endian_param = bitmap_match.group(2)
@@ -132,11 +146,11 @@ class CalculatorPaperAdvanced:
             if width_param is not None:
                 bitmap_width = int(width_param)
                 if bitmap_width <= 0:
-                    return None, None, f"错误: bitmap 宽度参数必须是正整数", None, False
+                    return None, None, f"错误: bitmap 宽度参数必须是正整数", None, False, None
             
             # 只保留值表达式用于计算
             line = value_expr
-            label = None  # bitmap 不能赋值，所以没有标签
+            label = None
             is_assignment = False
 
         else:
@@ -172,13 +186,13 @@ class CalculatorPaperAdvanced:
 
             # 如果有未定义的变量，返回错误
             if undefined_vars:
-                return None, label, f"变量未定义: {', '.join(undefined_vars)}", None, False
+                return None, label, f"变量未定义: {', '.join(undefined_vars)}", None, False, None
 
             # 计算表达式
             result = self.evaluate(expr_with_vars, has_hex_bin)
 
-            # 保存变量（只有非 bitmap 调用才保存）
-            if label and not use_bitmap:
+            # 保存变量（只有非 bitmap/hex 调用才保存）
+            if label and not use_bitmap and not use_hex_func:
                 self.variables[label] = result
 
             # 返回结果和替换后的表达式（如果有变量替换）
@@ -196,11 +210,19 @@ class CalculatorPaperAdvanced:
                         input_bit_width = self._detect_input_bit_width(value_expr)
                         bit_info = self._generate_bit_display(int_result, bitmap_endian, bitmap_width, input_bit_width)
 
-            # 返回结果，标签，替换表达式，位信息，是否使用bitmap
-            return result, label, replaced_expr, bit_info, use_bitmap
+            # 生成 hex 显示信息
+            hex_info = None
+            if use_hex_func:
+                if isinstance(result, (int, float)) and result >= 0:
+                    int_result = int(result)
+                    if int_result == result:
+                        hex_info = f"0x{int_result:X}"
+
+            # 返回结果，标签，替换表达式，位信息，是否使用bitmap，hex信息
+            return result, label, replaced_expr, bit_info, use_bitmap, hex_info
 
         except Exception as e:
-            return None, label, f"错误: {str(e)}", None, False
+            return None, label, f"错误: {str(e)}", None, False, None
 
     def _replace_variables(self, expr, use_hex_format=False):
         """替换表达式中的变量
@@ -229,7 +251,7 @@ class CalculatorPaperAdvanced:
         def replace_func(match):
             var_name = match.group(1)
             # 跳过占位符和函数名
-            if var_name.startswith('__PROTECTED_') or var_name.lower() in ['swap', 'bitmap']:
+            if var_name.startswith('__PROTECTED_') or var_name.lower() in ['swap', 'bitmap', 'hex']:
                 return var_name
 
             if var_name in self.variables:
@@ -552,16 +574,16 @@ class CalculatorPaperAdvanced:
                 continue
 
             # 解析表达式
-            result, label, extra_info, bit_info, use_bitmap = self.parse_line(line)
+            result, label, extra_info, bit_info, use_bitmap, hex_info = self.parse_line(line)
 
             self.lines.append(original_line)
 
             if result is not None:
                 # 成功计算
-                self.results.append((result, label, extra_info, bit_info, use_bitmap))
+                self.results.append((result, label, extra_info, bit_info, use_bitmap, hex_info))
             else:
                 # 计算失败或特殊命令
-                self.results.append((None, label, extra_info, bit_info, use_bitmap))
+                self.results.append((None, label, extra_info, bit_info, use_bitmap, hex_info))
         
         # 保存当前状态到历史记录
         self.save_state()
@@ -637,7 +659,7 @@ class CalculatorPaperAdvanced:
                 output.append(line)
                 continue
 
-            result, label, extra_info, bit_info, use_bitmap = result_info
+            result, label, extra_info, bit_info, use_bitmap, hex_info = result_info
 
             if result is None:
                 # 计算失败或特殊命令，显示信息
@@ -647,7 +669,10 @@ class CalculatorPaperAdvanced:
                     output.append(line)
             else:
                 # 格式化数字
-                if isinstance(result, int):
+                if hex_info:
+                    # hex() 函数：显示16进制
+                    result_str = hex_info
+                elif isinstance(result, int):
                     # 整数
                     if use_bitmap:
                         # 使用 bitmap 函数：只显示十进制
@@ -762,9 +787,13 @@ Examples (示例):
         print("   - Can be used in expressions")
         print("   - Example: a = swap(0x1234)  # Result: 0x3412")
         print("   - Example: bitmap(swap(b))")
-        print("9. Lines starting with # are comments")
-        print("10. Type 'exit' or 'quit' to exit")
-        print("11. Type 'calc' to start calculation")
+        print("9. hex function:")
+        print("   - hex(value)         (Display as hexadecimal)")
+        print("   - Note: Can only be used standalone")
+        print("   - Example: hex(255)  # Result: 0xFF")
+        print("10. Lines starting with # are comments")
+        print("11. Type 'exit' or 'quit' to exit")
+        print("12. Type 'calc' to start calculation")
         print("=" * 80)
         print()
 
@@ -829,9 +858,13 @@ bitmap(or_result, 1)
         print("   - 可以用于表达式中")
         print("   - 示例: a = swap(0x1234)  # 结果: 0x3412")
         print("   - 示例: bitmap(swap(b))")
-        print("9. 以 # 开头的行为注释")
-        print("10. 输入 'exit' 或 'quit' 退出")
-        print("11. 输入 'calc' 开始计算")
+        print("9. hex 函数:")
+        print("   - hex(数值)          (显示16进制)")
+        print("   - 注意：只能单独使用")
+        print("   - 示例: hex(255)  # 结果: 0xFF")
+        print("10. 以 # 开头的行为注释")
+        print("11. 输入 'exit' 或 'quit' 退出")
+        print("12. 输入 'calc' 开始计算")
         print("=" * 80)
         print()
 

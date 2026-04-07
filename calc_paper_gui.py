@@ -21,29 +21,86 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import tkinter as tk
-from tkinter import scrolledtext, messagebox, filedialog
+from tkinter import scrolledtext, messagebox, filedialog, simpledialog
+import json
+import os
 import re
 from calc_paper import CalculatorPaperAdvanced
 
-VERSION = "1.3"
+VERSION = "1.4"
+
+# 配置文件路径（与脚本同目录）
+CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(CONFIG_DIR, '.calcpaper_config.json')
+SESSION_FILE = os.path.join(CONFIG_DIR, '.calcpaper_session.json')
+
+# 默认快捷键配置
+DEFAULT_SHORTCUTS = {
+    'calculate': '<F5>',
+    'calculate_alt': '<Control-Return>',
+    'clear': '<Control-d>',
+    'undo': '<Control-z>',
+    'redo': '<Control-y>',
+    'load_example': '<Control-l>',
+    'open_file': '<Control-o>',
+    'save_file': '<Control-s>',
+    'font_increase': '<Control-equal>',
+    'font_decrease': '<Control-minus>',
+}
+
+# 快捷键显示名称
+SHORTCUT_NAMES_EN = {
+    'calculate': 'Calculate',
+    'calculate_alt': 'Calculate (Alt)',
+    'clear': 'Clear',
+    'undo': 'Undo',
+    'redo': 'Redo',
+    'load_example': 'Load Example',
+    'open_file': 'Open File',
+    'save_file': 'Save Result',
+    'font_increase': 'Font Increase',
+    'font_decrease': 'Font Decrease',
+}
+
+SHORTCUT_NAMES_ZH = {
+    'calculate': '计算',
+    'calculate_alt': '计算 (备选)',
+    'clear': '清空',
+    'undo': '撤销',
+    'redo': '恢复',
+    'load_example': '加载示例',
+    'open_file': '打开文件',
+    'save_file': '保存结果',
+    'font_increase': '放大字体',
+    'font_decrease': '缩小字体',
+}
+
+
+def shortcut_display(key_str):
+    """将 tkinter 快捷键字符串转为可读格式，如 <Control-s> -> Ctrl+S"""
+    s = key_str.strip('<>').replace('Control', 'Ctrl').replace('Return', 'Enter')
+    parts = s.split('-')
+    return '+'.join(p.upper() if len(p) == 1 else p for p in parts)
+
 
 class CalculatorGUIAdvanced:
     def __init__(self, root):
         self.root = root
-        self.language = 'en'  # 默认英文，'zh' 或 'en'
-        self.font_size = 10  # 默认字体大小
-        self.min_font_size = 8  # 最小字体大小
-        self.max_font_size = 32  # 最大字体大小（不再限制）
+        self.min_font_size = 8
+        self.max_font_size = 32
+
+        # 加载配置（语言、字体、窗口大小、快捷键）
+        self.load_config()
+
         self.update_title()
-        self.root.geometry("1200x800")
 
         # 创建计算器实例
         self.calculator = CalculatorPaperAdvanced(language=self.language)
-        
+
         # GUI专用的历史记录（保存输入和输出文本）
-        self.gui_history = []  # 存储 (input_text, output_text) 元组
-        self.gui_history_index = -1  # 当前历史位置
-        self.last_saved_input = ""  # 上次保存的输入内容
+        self.gui_history = []
+        self.gui_history_index = -1
+        self.last_saved_input = ""
 
         # 创建界面
         self.create_widgets()
@@ -53,518 +110,525 @@ class CalculatorGUIAdvanced:
 
         # 绑定窗口大小变化事件
         self.root.bind('<Configure>', self.on_window_configure)
-        
-        # 保存初始空白状态
-        self.root.after(100, self.save_initial_state)
-        
-        # 绑定输入框的修改事件，自动保存历史
+
+        # 恢复上次会话
+        self.root.after(100, self._restore_session_and_init)
+
+        # 绑定输入框的修改事件
         self.input_text.bind('<<Modified>>', self.on_input_modified)
 
+        # 窗口关闭时保存
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    # ==================== 配置持久化 ====================
+
+    def load_config(self):
+        """加载配置文件"""
+        defaults = {
+            'language': 'en',
+            'font_size': 10,
+            'window_geometry': '1200x800',
+            'shortcuts': DEFAULT_SHORTCUTS.copy(),
+        }
+        try:
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    saved = json.load(f)
+                for k, v in defaults.items():
+                    if k not in saved:
+                        saved[k] = v
+                # 合并快捷键（保留新增的默认键）
+                merged_shortcuts = DEFAULT_SHORTCUTS.copy()
+                merged_shortcuts.update(saved.get('shortcuts', {}))
+                saved['shortcuts'] = merged_shortcuts
+                config = saved
+            else:
+                config = defaults
+        except Exception:
+            config = defaults
+
+        self.language = config['language']
+        self.font_size = config['font_size']
+        self.root.geometry(config['window_geometry'])
+        self.shortcuts = config['shortcuts']
+
+    def save_config(self):
+        """保存配置文件"""
+        geo = self.root.geometry()
+        config = {
+            'language': self.language,
+            'font_size': self.font_size,
+            'window_geometry': geo,
+            'shortcuts': self.shortcuts,
+        }
+        try:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    # ==================== 会话持久化 ====================
+
+    def save_session(self):
+        """保存当前会话（输入和输出内容）"""
+        try:
+            input_content = self.input_text.get("1.0", "end-1c")
+            output_content = self.output_text.get("1.0", "end-1c")
+            session = {
+                'input': input_content,
+                'output': output_content,
+            }
+            with open(SESSION_FILE, 'w', encoding='utf-8') as f:
+                json.dump(session, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def load_session(self):
+        """加载上次会话"""
+        try:
+            if os.path.exists(SESSION_FILE):
+                with open(SESSION_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return None
+
+    def _restore_session_and_init(self):
+        """恢复会话并初始化状态"""
+        session = self.load_session()
+        if session:
+            input_content = session.get('input', '')
+            output_content = session.get('output', '')
+            if input_content:
+                self.input_text.unbind('<<Modified>>')
+                self.input_text.delete("1.0", tk.END)
+                self.input_text.insert("1.0", input_content)
+                self.input_text.bind('<<Modified>>', self.on_input_modified)
+            if output_content:
+                self.output_text.config(state=tk.NORMAL)
+                self.output_text.delete("1.0", tk.END)
+                self.output_text.insert("1.0", output_content)
+                self.apply_syntax_highlighting()
+                self.output_text.config(state=tk.DISABLED)
+            self.last_saved_input = input_content
+
+        # 保存初始状态
+        input_c = self.input_text.get("1.0", "end-1c")
+        output_c = self.output_text.get("1.0", "end-1c")
+        self.save_gui_state(input_c, output_c)
+
+    def on_close(self):
+        """窗口关闭时保存配置和会话"""
+        self.save_config()
+        self.save_session()
+        self.root.destroy()
+
+    # ==================== 窗口和标题 ====================
+
     def on_window_configure(self, event):
-        """窗口大小变化时的处理"""
-        # 只处理主窗口的配置变化
         if event.widget == self.root:
-            # 检查按钮是否需要滚动
             self.root.after_idle(self.check_button_scroll_needed)
 
     def update_title(self):
-        """更新标题栏"""
         if self.language == 'en':
             self.root.title(f"CalcPaper - Advanced v{VERSION}")
         else:
             self.root.title(f"计算稿纸 - 高级版 v{VERSION}")
 
+    # ==================== 语言切换 ====================
+
     def toggle_language(self):
-        """切换语言"""
         self.language = 'zh' if self.language == 'en' else 'en'
         self.calculator.set_language(self.language)
         self.update_title()
-
-        # 更新按钮文本
         self.update_button_texts()
 
     def update_button_texts(self):
-        """更新按钮文本"""
+        """更新按钮文本（含快捷键显示）"""
+        sc = self.shortcuts
+
+        def _btn(en, zh, key):
+            disp = shortcut_display(sc.get(key, ''))
+            label = en if self.language == 'en' else zh
+            return f"{label} ({disp})" if disp else label
+
         if hasattr(self, 'calc_button'):
-            calc_text = "Calculate (F5)" if self.language == 'en' else "计算 (F5)"
-            self.calc_button.config(text=calc_text)
-
+            self.calc_button.config(text=_btn("Calculate", "计算", "calculate"))
         if hasattr(self, 'clear_button'):
-            clear_text = "Clear (Ctrl+D)" if self.language == 'en' else "清空 (Ctrl+D)"
-            self.clear_button.config(text=clear_text)
-
+            self.clear_button.config(text=_btn("Clear", "清空", "clear"))
         if hasattr(self, 'undo_button'):
-            undo_text = "Undo (Ctrl+Z)" if self.language == 'en' else "撤销 (Ctrl+Z)"
-            self.undo_button.config(text=undo_text)
-
+            self.undo_button.config(text=_btn("Undo", "撤销", "undo"))
         if hasattr(self, 'redo_button'):
-            redo_text = "Redo (Ctrl+Y)" if self.language == 'en' else "恢复 (Ctrl+Y)"
-            self.redo_button.config(text=redo_text)
-
+            self.redo_button.config(text=_btn("Redo", "恢复", "redo"))
         if hasattr(self, 'example_button'):
-            example_text = "Load Example (Ctrl+L)" if self.language == 'en' else "加载示例 (Ctrl+L)"
-            self.example_button.config(text=example_text)
-
+            self.example_button.config(text=_btn("Load Example", "加载示例", "load_example"))
         if hasattr(self, 'open_button'):
-            open_text = "Open File (Ctrl+O)" if self.language == 'en' else "打开文件 (Ctrl+O)"
-            self.open_button.config(text=open_text)
-
+            self.open_button.config(text=_btn("Open File", "打开文件", "open_file"))
         if hasattr(self, 'save_button'):
-            save_text = "Save Result (Ctrl+S)" if self.language == 'en' else "保存结果 (Ctrl+S)"
-            self.save_button.config(text=save_text)
-
+            self.save_button.config(text=_btn("Save Result", "保存结果", "save_file"))
         if hasattr(self, 'lang_button'):
-            lang_text = "中文" if self.language == 'en' else "EN"
-            self.lang_button.config(text=lang_text)
+            self.lang_button.config(text="中文" if self.language == 'en' else "EN")
 
-        # 更新标签文本
-        if hasattr(self, 'input_text') and hasattr(self, 'output_text'):
-            # 这里可以更新输入输出区域的标签，但由于我们没有保存标签引用，暂时跳过
-            pass
-
-        # 更新状态栏
         self.update_initial_font_display()
-        
-        # 更新撤销/恢复按钮状态
         self.update_undo_redo_buttons()
 
+    # ==================== 字体 ====================
+
     def increase_font(self):
-        """放大字体"""
         if self.font_size < self.max_font_size:
-            old_size = self.font_size
             self.font_size = min(self.font_size + 2, self.max_font_size)
             self.update_fonts()
-
-            # 只在字体真正改变时显示状态
-            if old_size != self.font_size:
-                status_text = f"Font increased to {self.font_size}" if self.language == 'en' else f"字体增大到 {self.font_size}"
-                self.status_bar.config(text=status_text)
-                # 3秒后恢复正常状态显示
-                self.root.after(3000, self.restore_normal_status)
-        else:
-            # 显示提示信息
-            status_text = f"Maximum font size ({self.max_font_size})" if self.language == 'en' else f"最大字体大小 ({self.max_font_size})"
-            self.status_bar.config(text=status_text)
-            # 3秒后恢复正常状态显示
+            msg = f"Font: {self.font_size}" if self.language == 'en' else f"字体: {self.font_size}"
+            self.status_bar.config(text=msg)
             self.root.after(3000, self.restore_normal_status)
 
     def decrease_font(self):
-        """缩小字体"""
         if self.font_size > self.min_font_size:
-            old_size = self.font_size
             self.font_size = max(self.font_size - 2, self.min_font_size)
             self.update_fonts()
-
-            # 只在字体真正改变时显示状态
-            if old_size != self.font_size:
-                status_text = f"Font decreased to {self.font_size}" if self.language == 'en' else f"字体缩小到 {self.font_size}"
-                self.status_bar.config(text=status_text)
-                # 3秒后恢复正常状态显示
-                self.root.after(3000, self.restore_normal_status)
-        else:
-            # 显示提示信息
-            status_text = f"Minimum font size ({self.min_font_size})" if self.language == 'en' else f"最小字体大小 ({self.min_font_size})"
-            self.status_bar.config(text=status_text)
-            # 3秒后恢复正常状态显示
+            msg = f"Font: {self.font_size}" if self.language == 'en' else f"字体: {self.font_size}"
+            self.status_bar.config(text=msg)
             self.root.after(3000, self.restore_normal_status)
 
     def restore_normal_status(self):
-        """恢复正常状态显示"""
-        status_text = "Ready" if self.language == 'en' else "就绪"
-        self.status_bar.config(text=status_text)
+        self.status_bar.config(text="Ready" if self.language == 'en' else "就绪")
 
     def update_initial_font_display(self):
-        """初始化字体大小显示"""
         if hasattr(self, 'font_size_label'):
             self.font_size_label.config(text=f"{self.font_size}")
-
-        # 只在初始化时显示字体信息，之后保持简洁的状态
-        status_text = "Ready" if self.language == 'en' else "就绪"
-        self.status_bar.config(text=status_text)
+        self.status_bar.config(text="Ready" if self.language == 'en' else "就绪")
 
     def update_fonts(self):
-        """更新字体大小"""
         self.input_text.config(font=("Consolas", self.font_size))
         self.output_text.config(font=("Consolas", self.font_size))
-
-        # 更新字体大小显示
         if hasattr(self, 'font_size_label'):
             self.font_size_label.config(text=f"{self.font_size}")
 
-        # 不在这里更新状态栏，避免重复显示
+    # ==================== 界面创建 ====================
 
     def create_widgets(self):
-        """创建界面组件"""
-        # 主框架 - 使用固定比例布局
         main_frame = tk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # 配置行权重：输入输出区域占据大部分空间
-        main_frame.grid_rowconfigure(0, weight=1)  # 输入输出区域
-        main_frame.grid_rowconfigure(1, weight=0)  # 按钮栏（固定高度）
-        main_frame.grid_rowconfigure(2, weight=0)  # 状态栏（固定高度）
+        main_frame.grid_rowconfigure(0, weight=1)
+        main_frame.grid_rowconfigure(1, weight=0)
+        main_frame.grid_rowconfigure(2, weight=0)
         main_frame.grid_columnconfigure(0, weight=1)
 
         # ========== 输入输出区域 ==========
         io_frame = tk.Frame(main_frame)
         io_frame.grid(row=0, column=0, sticky="nsew")
-
-        # 配置列权重：左右各占50%
         io_frame.grid_columnconfigure(0, weight=1)
         io_frame.grid_columnconfigure(1, weight=1)
-        io_frame.grid_rowconfigure(0, weight=0)  # 标签行
-        io_frame.grid_rowconfigure(1, weight=1)  # 文本框行
+        io_frame.grid_rowconfigure(0, weight=0)
+        io_frame.grid_rowconfigure(1, weight=1)
 
-        # 左侧：输入区域
-        input_text = "Input:" if self.language == 'en' else "输入区域："
-        input_label = tk.Label(io_frame, text=input_text, font=("Arial", 10, "bold"))
-        input_label.grid(row=0, column=0, sticky="w", padx=(0, 5))
+        input_lbl = "Input:" if self.language == 'en' else "输入区域："
+        self.input_label = tk.Label(io_frame, text=input_lbl, font=("Arial", 10, "bold"))
+        self.input_label.grid(row=0, column=0, sticky="w", padx=(0, 5))
 
-        self.input_text = scrolledtext.ScrolledText(
-            io_frame,
-            wrap=tk.WORD,
-            font=("Consolas", self.font_size)
-        )
+        self.input_text = scrolledtext.ScrolledText(io_frame, wrap=tk.WORD, font=("Consolas", self.font_size))
         self.input_text.grid(row=1, column=0, sticky="nsew", padx=(0, 5))
 
-        # 右侧：输出区域
-        output_text = "Output:" if self.language == 'en' else "输出区域："
-        output_label = tk.Label(io_frame, text=output_text, font=("Arial", 10, "bold"))
-        output_label.grid(row=0, column=1, sticky="w", padx=(5, 0))
+        output_lbl = "Output:" if self.language == 'en' else "输出区域："
+        self.output_label = tk.Label(io_frame, text=output_lbl, font=("Arial", 10, "bold"))
+        self.output_label.grid(row=0, column=1, sticky="w", padx=(5, 0))
 
-        self.output_text = scrolledtext.ScrolledText(
-            io_frame,
-            wrap=tk.WORD,
-            font=("Consolas", self.font_size),
-            state=tk.DISABLED
-        )
+        self.output_text = scrolledtext.ScrolledText(io_frame, wrap=tk.WORD, font=("Consolas", self.font_size), state=tk.DISABLED)
         self.output_text.grid(row=1, column=1, sticky="nsew", padx=(5, 0))
-
-        # 保存标签引用以便语言切换
-        self.input_label = input_label
-        self.output_label = output_label
 
         # ========== 按钮栏 ==========
         button_frame = tk.Frame(main_frame, height=60)
         button_frame.grid(row=1, column=0, sticky="ew", pady=(10, 0))
-        button_frame.grid_propagate(False)  # 防止子组件改变框架大小
+        button_frame.grid_propagate(False)
 
-        # 创建内部滚动容器
         inner_frame = tk.Frame(button_frame)
         inner_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 创建画布和滚动条
         self.button_canvas = tk.Canvas(inner_frame, height=50, highlightthickness=0)
         self.button_scrollbar = tk.Scrollbar(inner_frame, orient="horizontal", command=self.button_canvas.xview)
         self.scrollable_frame = tk.Frame(self.button_canvas)
 
-        # 配置滚动
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.button_canvas.configure(scrollregion=self.button_canvas.bbox("all"))
-        )
-
+        self.scrollable_frame.bind("<Configure>", lambda e: self.button_canvas.configure(scrollregion=self.button_canvas.bbox("all")))
         self.button_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.button_canvas.configure(xscrollcommand=self.button_scrollbar.set)
-
-        # 先打包画布
         self.button_canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        # 计算按钮
-        calc_text = "Calculate (F5)" if self.language == 'en' else "计算 (F5)"
-        self.calc_button = tk.Button(
-            self.scrollable_frame,
-            text=calc_text,
-            command=self.calculate,
-            bg="#4CAF50",
-            fg="white",
-            font=("Arial", 10, "bold"),
-            padx=15,
-            pady=3
-        )
+        sc = self.shortcuts
+
+        def _btn_text(en, zh, key):
+            disp = shortcut_display(sc.get(key, ''))
+            label = en if self.language == 'en' else zh
+            return f"{label} ({disp})" if disp else label
+
+        self.calc_button = tk.Button(self.scrollable_frame, text=_btn_text("Calculate", "计算", "calculate"),
+                                     command=self.calculate, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), padx=15, pady=3)
         self.calc_button.pack(side=tk.LEFT, padx=(0, 3))
 
-        # 清空按钮
-        clear_text = "Clear (Ctrl+D)" if self.language == 'en' else "清空 (Ctrl+D)"
-        self.clear_button = tk.Button(
-            self.scrollable_frame,
-            text=clear_text,
-            command=self.clear_all,
-            bg="#f44336",
-            fg="white",
-            font=("Arial", 10),
-            padx=15,
-            pady=3
-        )
+        self.clear_button = tk.Button(self.scrollable_frame, text=_btn_text("Clear", "清空", "clear"),
+                                      command=self.clear_all, bg="#f44336", fg="white", font=("Arial", 10), padx=15, pady=3)
         self.clear_button.pack(side=tk.LEFT, padx=3)
 
-        # 撤销按钮
-        undo_text = "Undo (Ctrl+Z)" if self.language == 'en' else "撤销 (Ctrl+Z)"
-        self.undo_button = tk.Button(
-            self.scrollable_frame,
-            text=undo_text,
-            command=self.undo,
-            bg="#FF9800",
-            fg="white",
-            font=("Arial", 10),
-            padx=15,
-            pady=3
-        )
+        self.undo_button = tk.Button(self.scrollable_frame, text=_btn_text("Undo", "撤销", "undo"),
+                                     command=self.undo, bg="#FF9800", fg="white", font=("Arial", 10), padx=15, pady=3)
         self.undo_button.pack(side=tk.LEFT, padx=3)
 
-        # 恢复按钮
-        redo_text = "Redo (Ctrl+Y)" if self.language == 'en' else "恢复 (Ctrl+Y)"
-        self.redo_button = tk.Button(
-            self.scrollable_frame,
-            text=redo_text,
-            command=self.redo,
-            bg="#FF9800",
-            fg="white",
-            font=("Arial", 10),
-            padx=15,
-            pady=3
-        )
+        self.redo_button = tk.Button(self.scrollable_frame, text=_btn_text("Redo", "恢复", "redo"),
+                                     command=self.redo, bg="#FF9800", fg="white", font=("Arial", 10), padx=15, pady=3)
         self.redo_button.pack(side=tk.LEFT, padx=3)
 
-        # 加载示例按钮
-        example_text = "Load Example (Ctrl+L)" if self.language == 'en' else "加载示例 (Ctrl+L)"
-        self.example_button = tk.Button(
-            self.scrollable_frame,
-            text=example_text,
-            command=self.load_example,
-            bg="#2196F3",
-            fg="white",
-            font=("Arial", 10),
-            padx=15,
-            pady=3
-        )
+        self.example_button = tk.Button(self.scrollable_frame, text=_btn_text("Load Example", "加载示例", "load_example"),
+                                        command=self.load_example, bg="#2196F3", fg="white", font=("Arial", 10), padx=15, pady=3)
         self.example_button.pack(side=tk.LEFT, padx=3)
 
-        # 打开文件按钮
-        open_text = "Open File (Ctrl+O)" if self.language == 'en' else "打开文件 (Ctrl+O)"
-        self.open_button = tk.Button(
-            self.scrollable_frame,
-            text=open_text,
-            command=self.open_file,
-            font=("Arial", 10),
-            padx=15,
-            pady=3
-        )
+        self.open_button = tk.Button(self.scrollable_frame, text=_btn_text("Open File", "打开文件", "open_file"),
+                                     command=self.open_file, font=("Arial", 10), padx=15, pady=3)
         self.open_button.pack(side=tk.LEFT, padx=3)
 
-        # 保存文件按钮
-        save_text = "Save Result (Ctrl+S)" if self.language == 'en' else "保存结果 (Ctrl+S)"
-        self.save_button = tk.Button(
-            self.scrollable_frame,
-            text=save_text,
-            command=self.save_file,
-            font=("Arial", 10),
-            padx=15,
-            pady=3
-        )
+        self.save_button = tk.Button(self.scrollable_frame, text=_btn_text("Save Result", "保存结果", "save_file"),
+                                     command=self.save_file, font=("Arial", 10), padx=15, pady=3)
         self.save_button.pack(side=tk.LEFT, padx=3)
 
-        # 中英文切换按钮
-        lang_text = "中文" if self.language == 'en' else "EN"
-        self.lang_button = tk.Button(
-            self.scrollable_frame,
-            text=lang_text,
-            command=self.toggle_language,
-            font=("Arial", 10),
-            padx=12,
-            pady=3,
-            bg="#9C27B0",
-            fg="white"
-        )
+        self.lang_button = tk.Button(self.scrollable_frame, text="中文" if self.language == 'en' else "EN",
+                                     command=self.toggle_language, font=("Arial", 10), padx=12, pady=3, bg="#9C27B0", fg="white")
         self.lang_button.pack(side=tk.LEFT, padx=3)
 
-        # 字体放大按钮
-        self.font_plus_button = tk.Button(
-            self.scrollable_frame,
-            text="A+",
-            command=self.increase_font,
-            font=("Arial", 10, "bold"),
-            padx=8,
-            pady=3,
-            bg="#4CAF50",
-            fg="white"
-        )
+        # 快捷键配置按钮
+        shortcut_text = "⌨" 
+        self.shortcut_button = tk.Button(self.scrollable_frame, text=shortcut_text,
+                                         command=self.open_shortcut_config, font=("Arial", 10), padx=8, pady=3, bg="#607D8B", fg="white")
+        self.shortcut_button.pack(side=tk.LEFT, padx=3)
+
+        self.font_plus_button = tk.Button(self.scrollable_frame, text="A+", command=self.increase_font,
+                                          font=("Arial", 10, "bold"), padx=8, pady=3, bg="#4CAF50", fg="white")
         self.font_plus_button.pack(side=tk.LEFT, padx=3)
 
-        # 字体缩小按钮
-        self.font_minus_button = tk.Button(
-            self.scrollable_frame,
-            text="A-",
-            command=self.decrease_font,
-            font=("Arial", 10, "bold"),
-            padx=8,
-            pady=3,
-            bg="#FF9800",
-            fg="white"
-        )
+        self.font_minus_button = tk.Button(self.scrollable_frame, text="A-", command=self.decrease_font,
+                                           font=("Arial", 10, "bold"), padx=8, pady=3, bg="#FF9800", fg="white")
         self.font_minus_button.pack(side=tk.LEFT, padx=3)
 
-        # 字体大小显示
-        self.font_size_label = tk.Label(
-            self.scrollable_frame,
-            text=f"{self.font_size}",
-            font=("Arial", 9),
-            padx=5,
-            pady=3,
-            relief=tk.SUNKEN,
-            bd=1,
-            bg="white"
-        )
+        self.font_size_label = tk.Label(self.scrollable_frame, text=f"{self.font_size}", font=("Arial", 9),
+                                        padx=5, pady=3, relief=tk.SUNKEN, bd=1, bg="white")
         self.font_size_label.pack(side=tk.LEFT, padx=3)
 
-        # 绑定鼠标滚轮到画布
-        def on_mousewheel(event):
-            self.button_canvas.xview_scroll(int(-1*(event.delta/120)), "units")
-
-        self.button_canvas.bind("<MouseWheel>", on_mousewheel)
-
-        # 延迟初始化滚动检查
+        self.button_canvas.bind("<MouseWheel>", lambda e: self.button_canvas.xview_scroll(int(-1*(e.delta/120)), "units"))
         self.root.after(100, self.setup_button_scrolling)
 
         # ========== 状态栏 ==========
         status_frame = tk.Frame(main_frame, height=25)
         status_frame.grid(row=2, column=0, sticky="ew", pady=(5, 0))
-        status_frame.grid_propagate(False)  # 防止子组件改变框架大小
+        status_frame.grid_propagate(False)
 
-        status_text = "Ready" if self.language == 'en' else "就绪"
-        self.status_bar = tk.Label(
-            status_frame,
-            text=status_text,
-            bd=1,
-            relief=tk.SUNKEN,
-            anchor=tk.W,
-            font=("Arial", 9)
-        )
+        self.status_bar = tk.Label(status_frame, text="Ready" if self.language == 'en' else "就绪",
+                                   bd=1, relief=tk.SUNKEN, anchor=tk.W, font=("Arial", 9))
         self.status_bar.pack(fill=tk.BOTH, expand=True)
 
-        # 初始化字体大小显示
         self.root.after(100, self.update_initial_font_display)
 
+    # ==================== 按钮滚动 ====================
+
     def setup_button_scrolling(self):
-        """设置按钮滚动功能"""
-        # 确保按钮容器正确显示
         self.root.update_idletasks()
         self.check_button_scroll_needed()
-
-        # 绑定窗口大小变化事件
         self.button_canvas.bind('<Configure>', lambda e: self.root.after_idle(self.check_button_scroll_needed))
 
     def check_button_scroll_needed(self):
-        """检查按钮是否需要滚动"""
         try:
             self.root.update_idletasks()
-
-            # 确保画布已经正确初始化
             if not hasattr(self, 'button_canvas') or not hasattr(self, 'scrollable_frame'):
                 return
-
             canvas_width = self.button_canvas.winfo_width()
             frame_width = self.scrollable_frame.winfo_reqwidth()
-
-            # 只有当画布宽度大于1时才进行检查（确保已初始化）
             if canvas_width > 1:
                 if frame_width > canvas_width:
-                    # 需要滚动条
                     if not self.button_scrollbar.winfo_viewable():
                         self.button_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-                        # 调整画布高度为滚动条留出空间
                         self.button_canvas.configure(height=40)
                 else:
-                    # 不需要滚动条
                     if self.button_scrollbar.winfo_viewable():
                         self.button_scrollbar.pack_forget()
-                        # 恢复画布高度
                         self.button_canvas.configure(height=50)
-
         except (tk.TclError, AttributeError):
-            # 如果组件还没有完全初始化，忽略错误
             pass
 
+    # ==================== 快捷键 ====================
+
     def bind_shortcuts(self):
-        """绑定快捷键"""
-        self.root.bind('<F5>', lambda e: self.calculate())
-        self.root.bind('<Control-Return>', lambda e: self.calculate())
-        self.root.bind('<Control-d>', lambda e: self.clear_all())
-        self.root.bind('<Control-D>', lambda e: self.clear_all())
-        self.root.bind('<Control-z>', lambda e: self.undo())
-        self.root.bind('<Control-Z>', lambda e: self.undo())
-        self.root.bind('<Control-y>', lambda e: self.redo())
-        self.root.bind('<Control-Y>', lambda e: self.redo())
-        self.root.bind('<Control-l>', lambda e: self.load_example())
-        self.root.bind('<Control-L>', lambda e: self.load_example())
-        self.root.bind('<Control-o>', lambda e: self.open_file())
-        self.root.bind('<Control-O>', lambda e: self.open_file())
-        self.root.bind('<Control-s>', lambda e: self.save_file())
-        self.root.bind('<Control-S>', lambda e: self.save_file())
-        self.root.bind('<Control-plus>', lambda e: self.increase_font())
-        self.root.bind('<Control-equal>', lambda e: self.increase_font())
-        self.root.bind('<Control-minus>', lambda e: self.decrease_font())
+        """绑定快捷键（从配置读取）"""
+        # 先解绑所有已知快捷键
+        self._unbind_all_shortcuts()
+
+        sc = self.shortcuts
+        actions = {
+            'calculate': lambda e: self.calculate(),
+            'calculate_alt': lambda e: self.calculate(),
+            'clear': lambda e: self.clear_all(),
+            'undo': lambda e: self.undo(),
+            'redo': lambda e: self.redo(),
+            'load_example': lambda e: self.load_example(),
+            'open_file': lambda e: self.open_file(),
+            'save_file': lambda e: self.save_file(),
+            'font_increase': lambda e: self.increase_font(),
+            'font_decrease': lambda e: self.decrease_font(),
+        }
+
+        self._bound_keys = []
+        for action_name, key_str in sc.items():
+            if key_str and action_name in actions:
+                try:
+                    self.root.bind(key_str, actions[action_name])
+                    self._bound_keys.append(key_str)
+                    # 也绑定大写版本
+                    if 'Control-' in key_str and len(key_str.split('-')[-1].rstrip('>')) == 1:
+                        upper_key = key_str[:-2] + key_str[-2].upper() + key_str[-1]
+                        if upper_key != key_str:
+                            self.root.bind(upper_key, actions[action_name])
+                            self._bound_keys.append(upper_key)
+                except Exception:
+                    pass
+
+    def _unbind_all_shortcuts(self):
+        """解绑所有已绑定的快捷键"""
+        if hasattr(self, '_bound_keys'):
+            for key in self._bound_keys:
+                try:
+                    self.root.unbind(key)
+                except Exception:
+                    pass
+        self._bound_keys = []
+
+    def open_shortcut_config(self):
+        """打开快捷键配置对话框"""
+        dialog = tk.Toplevel(self.root)
+        title = "Shortcut Configuration" if self.language == 'en' else "快捷键配置"
+        dialog.title(title)
+        dialog.geometry("500x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        names = SHORTCUT_NAMES_EN if self.language == 'en' else SHORTCUT_NAMES_ZH
+
+        # 说明文字
+        hint = "Click a shortcut field, then press the new key combination." if self.language == 'en' \
+            else "点击快捷键输入框，然后按下新的快捷键组合。"
+        tk.Label(dialog, text=hint, font=("Arial", 9), fg="gray").pack(pady=(10, 5))
+
+        # 滚动框架
+        canvas = tk.Canvas(dialog)
+        scrollbar = tk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+        scroll_frame = tk.Frame(canvas)
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        entries = {}
+        for action_name in DEFAULT_SHORTCUTS:
+            row = tk.Frame(scroll_frame)
+            row.pack(fill=tk.X, pady=2)
+
+            display_name = names.get(action_name, action_name)
+            tk.Label(row, text=display_name, width=20, anchor="w", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
+
+            entry = tk.Entry(row, width=25, font=("Consolas", 10))
+            entry.insert(0, self.shortcuts.get(action_name, ''))
+            entry.pack(side=tk.LEFT, padx=5)
+            entries[action_name] = entry
+
+            # 按键捕获
+            def make_capture(e_widget):
+                def on_key(event):
+                    parts = []
+                    if event.state & 0x4:
+                        parts.append('Control')
+                    if event.state & 0x1:
+                        parts.append('Shift')
+                    if event.state & 0x8 or event.state & 0x80:
+                        parts.append('Alt')
+
+                    keysym = event.keysym
+                    if keysym in ('Control_L', 'Control_R', 'Shift_L', 'Shift_R', 'Alt_L', 'Alt_R'):
+                        return
+                    parts.append(keysym)
+                    key_str = '<' + '-'.join(parts) + '>'
+                    e_widget.delete(0, tk.END)
+                    e_widget.insert(0, key_str)
+                return on_key
+
+            entry.bind('<Key>', make_capture(entry))
+
+        # 按钮
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+
+        def apply_shortcuts():
+            for action_name, entry in entries.items():
+                val = entry.get().strip()
+                self.shortcuts[action_name] = val
+            self.bind_shortcuts()
+            self.update_button_texts()
+            self.save_config()
+            msg = "Shortcuts updated" if self.language == 'en' else "快捷键已更新"
+            self.status_bar.config(text=msg)
+            dialog.destroy()
+
+        def reset_shortcuts():
+            for action_name, entry in entries.items():
+                entry.delete(0, tk.END)
+                entry.insert(0, DEFAULT_SHORTCUTS.get(action_name, ''))
+
+        save_text = "Save" if self.language == 'en' else "保存"
+        reset_text = "Reset" if self.language == 'en' else "恢复默认"
+        cancel_text = "Cancel" if self.language == 'en' else "取消"
+
+        tk.Button(btn_frame, text=save_text, command=apply_shortcuts, bg="#4CAF50", fg="white",
+                  font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=reset_text, command=reset_shortcuts,
+                  font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text=cancel_text, command=dialog.destroy,
+                  font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
+
+    # ==================== 计算 ====================
 
     def calculate(self):
-        """执行计算"""
         try:
-            # 获取输入内容
             input_content = self.input_text.get("1.0", tk.END).strip()
-
             if not input_content:
-                status_text = "Please enter calculation content" if self.language == 'en' else "请输入计算内容"
-                self.status_bar.config(text=status_text)
+                self.status_bar.config(text="Please enter calculation content" if self.language == 'en' else "请输入计算内容")
                 return
 
-            # 创建新的计算器实例
             self.calculator = CalculatorPaperAdvanced(language=self.language)
-
-            # 处理文本
             self.calculator.process_text(input_content)
-
-            # 获取格式化输出
             output = self.calculator.format_output()
 
-            # 显示结果
             self.output_text.config(state=tk.NORMAL)
             self.output_text.delete("1.0", tk.END)
             self.output_text.insert("1.0", output)
-
-            # 应用语法高亮
             self.apply_syntax_highlighting()
-
             self.output_text.config(state=tk.DISABLED)
 
-            status_text = "Calculation completed" if self.language == 'en' else "计算完成"
-            self.status_bar.config(text=status_text)
-            
-            # 保存到GUI历史记录
+            self.status_bar.config(text="Calculation completed" if self.language == 'en' else "计算完成")
             self.save_gui_state(input_content, output)
             self.last_saved_input = input_content
-            
-            # 更新撤销/恢复按钮状态
             self.update_undo_redo_buttons()
 
         except Exception as e:
-            error_title = "Error" if self.language == 'en' else "错误"
-            error_msg = f"Calculation error: {str(e)}" if self.language == 'en' else f"计算出错：{str(e)}"
-            messagebox.showerror(error_title, error_msg)
-            error_status = f"Error: {str(e)}" if self.language == 'en' else f"错误: {str(e)}"
-            self.status_bar.config(text=error_status)
+            title = "Error" if self.language == 'en' else "错误"
+            messagebox.showerror(title, str(e))
+            self.status_bar.config(text=f"Error: {e}" if self.language == 'en' else f"错误: {e}")
 
     def apply_syntax_highlighting(self):
-        """应用语法高亮"""
-        # 清除所有标签
         for tag in self.output_text.tag_names():
             self.output_text.tag_remove(tag, "1.0", tk.END)
 
-        # 定义标签样式
         self.output_text.tag_config("comment", foreground="gray")
         self.output_text.tag_config("result", foreground="green", font=("Consolas", 10, "bold"))
         self.output_text.tag_config("error", foreground="red")
         self.output_text.tag_config("total", foreground="blue", font=("Consolas", 10, "bold"))
         self.output_text.tag_config("endian", foreground="purple", font=("Consolas", 10, "bold"))
         self.output_text.tag_config("bit_info", foreground="darkblue", font=("Consolas", 9))
+        self.output_text.tag_config("hex_result", foreground="#E65100", font=("Consolas", 10, "bold"))
 
         content = self.output_text.get("1.0", tk.END)
         lines = content.split('\n')
@@ -573,54 +637,40 @@ class CalculatorGUIAdvanced:
             line_start = f"{i}.0"
             line_end = f"{i}.end"
 
-            # 注释行
             if line.strip().startswith('#'):
                 self.output_text.tag_add("comment", line_start, line_end)
-
-            # 错误信息
             elif '错误:' in line or '变量未定义:' in line:
                 self.output_text.tag_add("error", line_start, line_end)
-
-            # 总计行
             elif line.strip().startswith('总计:'):
                 self.output_text.tag_add("total", line_start, line_end)
-
-            # 分隔线
             elif line.strip().startswith('-'):
                 self.output_text.tag_add("comment", line_start, line_end)
-
-            # 字节序设置
             elif 'endian:' in line.lower():
                 self.output_text.tag_add("endian", line_start, line_end)
-
-            # 位信息行
-            elif any(keyword in line for keyword in ['十六进制:', '二进制:', '位数:', '位索引']):
+            elif any(kw in line for kw in ['十六进制:', '二进制:', '位数:', '位索引',
+                                            'Hexadecimal:', 'Binary:', 'Bits:', 'Bit indices']):
                 self.output_text.tag_add("bit_info", line_start, line_end)
-
-            # 结果行（包含 = 的行）
-            elif '=' in line and not line.strip().startswith('#'):
-                # 找到 = 号的位置
+            elif 'hex(' in line.lower() and '=' in line:
                 eq_pos = line.find('=')
                 if eq_pos > 0:
-                    result_start = f"{i}.{eq_pos}"
-                    self.output_text.tag_add("result", result_start, line_end)
+                    self.output_text.tag_add("hex_result", f"{i}.{eq_pos}", line_end)
+            elif '=' in line and not line.strip().startswith('#'):
+                eq_pos = line.find('=')
+                if eq_pos > 0:
+                    self.output_text.tag_add("result", f"{i}.{eq_pos}", line_end)
+
+    # ==================== 清空/示例/文件 ====================
 
     def clear_all(self):
-        """清空所有内容"""
         self.input_text.delete("1.0", tk.END)
         self.output_text.config(state=tk.NORMAL)
         self.output_text.delete("1.0", tk.END)
         self.output_text.config(state=tk.DISABLED)
-        
-        # 保存清空后的状态
         self.save_gui_state("", "")
         self.last_saved_input = ""
-        
-        status_text = "Cleared" if self.language == 'en' else "已清空"
-        self.status_bar.config(text=status_text)
+        self.status_bar.config(text="Cleared" if self.language == 'en' else "已清空")
 
     def load_example(self):
-        """加载示例"""
         if self.language == 'en':
             example = """# Advanced CalcPaper Example
 
@@ -632,9 +682,6 @@ sum = a + b
 # Bitwise operations
 and_op = a & b
 or_op = a | b
-xor_op = a ^ b
-left_shift = a << 2
-right_shift = b >> 4
 
 # RGB color extraction
 color = 0xFF8040
@@ -644,6 +691,10 @@ blue = color & 0xFF
 
 # View bit structure with bitmap (big endian)
 bitmap(color, 1)
+
+# hex function
+hex(255)
+hex(color)
 
 # Percentage calculation
 price = 100
@@ -661,9 +712,6 @@ b = 0x1234
 # 位运算
 与 = a & b
 或 = a | b
-异或 = a ^ b
-左移 = a << 2
-右移 = b >> 4
 
 # RGB颜色提取
 颜色 = 0xFF8040
@@ -674,212 +722,121 @@ b = 0x1234
 # 使用bitmap查看位结构（大端字节序）
 bitmap(颜色, 1)
 
+# hex 函数
+hex(255)
+hex(颜色)
+
 # 百分数计算
 价格 = 100
 折扣 = 价格 * 15%
 实付 = 价格 - 折扣
 """
-        # 临时解绑修改事件
         self.input_text.unbind('<<Modified>>')
-        
         self.input_text.delete("1.0", tk.END)
         self.input_text.insert("1.0", example)
-        
-        # 保存加载示例后的状态
         self.save_gui_state(example, "")
         self.last_saved_input = example
-        
-        # 重新绑定修改事件
         self.input_text.bind('<<Modified>>', self.on_input_modified)
-        
-        status_text = "Example loaded" if self.language == 'en' else "已加载示例"
-        self.status_bar.config(text=status_text)
+        self.status_bar.config(text="Example loaded" if self.language == 'en' else "已加载示例")
 
     def open_file(self):
-        """打开文件"""
-        title_text = "Open File" if self.language == 'en' else "打开文件"
-        filename = filedialog.askopenfilename(
-            title=title_text,
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
-        )
-
+        title = "Open File" if self.language == 'en' else "打开文件"
+        filename = filedialog.askopenfilename(title=title, filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
         if filename:
             try:
                 with open(filename, 'r', encoding='utf-8') as f:
                     content = f.read()
-
-                # 临时解绑修改事件
                 self.input_text.unbind('<<Modified>>')
-                
                 self.input_text.delete("1.0", tk.END)
                 self.input_text.insert("1.0", content)
-                
-                # 保存打开文件后的状态
                 self.save_gui_state(content, "")
                 self.last_saved_input = content
-                
-                # 重新绑定修改事件
                 self.input_text.bind('<<Modified>>', self.on_input_modified)
-                
-                status_text = f"Opened: {filename}" if self.language == 'en' else f"已打开: {filename}"
-                self.status_bar.config(text=status_text)
+                self.status_bar.config(text=f"Opened: {filename}" if self.language == 'en' else f"已打开: {filename}")
             except Exception as e:
-                error_title = "Error" if self.language == 'en' else "错误"
-                error_msg = f"Cannot open file: {str(e)}" if self.language == 'en' else f"无法打开文件：{str(e)}"
-                messagebox.showerror(error_title, error_msg)
+                messagebox.showerror("Error" if self.language == 'en' else "错误", str(e))
 
     def save_file(self):
-        """保存文件"""
-        title_text = "Save File" if self.language == 'en' else "保存文件"
-        filename = filedialog.asksaveasfilename(
-            title=title_text,
-            defaultextension=".txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
-        )
-
+        title = "Save File" if self.language == 'en' else "保存文件"
+        filename = filedialog.asksaveasfilename(title=title, defaultextension=".txt",
+                                                filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
         if filename:
             try:
                 content = self.output_text.get("1.0", tk.END)
                 with open(filename, 'w', encoding='utf-8') as f:
                     f.write(content)
-
-                status_text = f"Saved: {filename}" if self.language == 'en' else f"已保存: {filename}"
-                self.status_bar.config(text=status_text)
+                self.status_bar.config(text=f"Saved: {filename}" if self.language == 'en' else f"已保存: {filename}")
             except Exception as e:
-                error_title = "Error" if self.language == 'en' else "错误"
-                error_msg = f"Cannot save file: {str(e)}" if self.language == 'en' else f"无法保存文件：{str(e)}"
-                messagebox.showerror(error_title, error_msg)
+                messagebox.showerror("Error" if self.language == 'en' else "错误", str(e))
+
+    # ==================== 撤销/恢复 ====================
 
     def save_gui_state(self, input_text, output_text):
-        """保存GUI状态到历史记录"""
-        # 如果当前不在历史末尾，删除后面的历史
         if self.gui_history_index < len(self.gui_history) - 1:
             self.gui_history = self.gui_history[:self.gui_history_index + 1]
-        
-        # 保存当前状态
         self.gui_history.append((input_text, output_text))
         self.gui_history_index = len(self.gui_history) - 1
-        
-        # 限制历史记录数量（最多保存50个状态）
         if len(self.gui_history) > 50:
             self.gui_history.pop(0)
             self.gui_history_index -= 1
-        
-        # 更新按钮状态
         self.update_undo_redo_buttons()
 
-    def save_initial_state(self):
-        """保存初始空白状态"""
-        input_content = self.input_text.get("1.0", "end-1c")
-        output_content = self.output_text.get("1.0", "end-1c")
-        self.save_gui_state(input_content, output_content)
-        self.last_saved_input = input_content
-
     def on_input_modified(self, event):
-        """输入框内容修改时的回调"""
-        # 重置修改标志
         if self.input_text.edit_modified():
             self.input_text.edit_modified(False)
-            
-            # 延迟保存，避免每次按键都保存（等待500ms无输入后保存）
             if hasattr(self, '_save_timer'):
                 self.root.after_cancel(self._save_timer)
-            
             self._save_timer = self.root.after(500, self.auto_save_input)
 
     def auto_save_input(self):
-        """自动保存输入内容"""
         current_input = self.input_text.get("1.0", "end-1c")
-        
-        # 只有当内容真正改变时才保存
         if current_input != self.last_saved_input:
             output_content = self.output_text.get("1.0", "end-1c")
             self.save_gui_state(current_input, output_content)
             self.last_saved_input = current_input
 
     def undo(self):
-        """撤销操作"""
         if self.gui_history_index > 0:
             self.gui_history_index -= 1
-            input_text, output_text = self.gui_history[self.gui_history_index]
-            
-            # 临时解绑修改事件，避免触发自动保存
+            inp, out = self.gui_history[self.gui_history_index]
             self.input_text.unbind('<<Modified>>')
-            
-            # 恢复输入
             self.input_text.delete("1.0", tk.END)
-            self.input_text.insert("1.0", input_text)
-            self.last_saved_input = input_text
-            
-            # 恢复输出
+            self.input_text.insert("1.0", inp)
+            self.last_saved_input = inp
             self.output_text.config(state=tk.NORMAL)
             self.output_text.delete("1.0", tk.END)
-            self.output_text.insert("1.0", output_text)
+            self.output_text.insert("1.0", out)
             self.apply_syntax_highlighting()
             self.output_text.config(state=tk.DISABLED)
-            
-            # 重新绑定修改事件
             self.input_text.bind('<<Modified>>', self.on_input_modified)
-            
-            status_text = "Undo completed" if self.language == 'en' else "撤销完成"
-            self.status_bar.config(text=status_text)
-            
-            # 更新按钮状态
+            self.status_bar.config(text="Undo" if self.language == 'en' else "撤销完成")
             self.update_undo_redo_buttons()
-        else:
-            status_text = "Nothing to undo" if self.language == 'en' else "无可撤销的操作"
-            self.status_bar.config(text=status_text)
 
     def redo(self):
-        """恢复操作"""
         if self.gui_history_index < len(self.gui_history) - 1:
             self.gui_history_index += 1
-            input_text, output_text = self.gui_history[self.gui_history_index]
-            
-            # 临时解绑修改事件，避免触发自动保存
+            inp, out = self.gui_history[self.gui_history_index]
             self.input_text.unbind('<<Modified>>')
-            
-            # 恢复输入
             self.input_text.delete("1.0", tk.END)
-            self.input_text.insert("1.0", input_text)
-            self.last_saved_input = input_text
-            
-            # 恢复输出
+            self.input_text.insert("1.0", inp)
+            self.last_saved_input = inp
             self.output_text.config(state=tk.NORMAL)
             self.output_text.delete("1.0", tk.END)
-            self.output_text.insert("1.0", output_text)
+            self.output_text.insert("1.0", out)
             self.apply_syntax_highlighting()
             self.output_text.config(state=tk.DISABLED)
-            
-            # 重新绑定修改事件
             self.input_text.bind('<<Modified>>', self.on_input_modified)
-            
-            status_text = "Redo completed" if self.language == 'en' else "恢复完成"
-            self.status_bar.config(text=status_text)
-            
-            # 更新按钮状态
+            self.status_bar.config(text="Redo" if self.language == 'en' else "恢复完成")
             self.update_undo_redo_buttons()
-        else:
-            status_text = "Nothing to redo" if self.language == 'en' else "无可恢复的操作"
-            self.status_bar.config(text=status_text)
 
     def update_undo_redo_buttons(self):
-        """更新撤销/恢复按钮的启用状态"""
         if hasattr(self, 'undo_button'):
-            if self.gui_history_index > 0:
-                self.undo_button.config(state=tk.NORMAL)
-            else:
-                self.undo_button.config(state=tk.DISABLED)
-        
+            self.undo_button.config(state=tk.NORMAL if self.gui_history_index > 0 else tk.DISABLED)
         if hasattr(self, 'redo_button'):
-            if self.gui_history_index < len(self.gui_history) - 1:
-                self.redo_button.config(state=tk.NORMAL)
-            else:
-                self.redo_button.config(state=tk.DISABLED)
+            self.redo_button.config(state=tk.NORMAL if self.gui_history_index < len(self.gui_history) - 1 else tk.DISABLED)
 
 
 def main():
-    """主函数"""
     root = tk.Tk()
     app = CalculatorGUIAdvanced(root)
     root.mainloop()
