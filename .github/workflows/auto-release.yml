@@ -77,11 +77,11 @@ jobs:
     - name: Build
       run: |
         pip install pyinstaller
-        # macOS 不支持 .ico 格式的图标，跳过 --icon 参数
         pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." calc_paper_gui.py
-        # 创建DMG
+        # onefile 模式生成的是单个可执行文件，不是 .app bundle
+        # 创建 DMG 包含可执行文件
         mkdir dmg_temp
-        cp -R dist/CalcPaper.app dmg_temp/
+        cp dist/CalcPaper dmg_temp/
         hdiutil create -volname "CalcPaper" -srcfolder dmg_temp -ov -format UDZO CalcPaper.dmg
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v1
