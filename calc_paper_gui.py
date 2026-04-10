@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-计算稿纸 - 高级版GUI
-支持16进制、2进制、位运算和字节序显示
+CalcPaper - Advanced Calculator Paper GUI
+Supports hex, binary, bitwise operations and byte order display
 
 Copyright (C) 2026 matthewzu <xiaofeng_zu@163.com>
 
@@ -26,33 +26,37 @@ import json
 import os
 import sys
 import re
+import threading
+import urllib.request
+import urllib.error
+import webbrowser
 from calc_paper import CalculatorPaperAdvanced
 
-VERSION = "1.4"
+from version import VERSION
 
-# 配置文件路径
-# 默认为可执行文件所在目录；PyInstaller 打包后为 exe 所在目录
+# Config file path
+# Default is the executable directory; after PyInstaller packaging, it's the exe directory
 def _get_exe_dir():
-    """获取可执行文件所在目录"""
+    """Get the directory of the executable"""
     if getattr(sys, 'frozen', False):
-        # PyInstaller 打包后
+        # After PyInstaller packaging
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 DEFAULT_DATA_DIR = _get_exe_dir()
 BOOTSTRAP_CONFIG = os.path.join(DEFAULT_DATA_DIR, 'calcpaper_config.json')
 
-# 获取资源文件路径（兼容 PyInstaller 打包）
+# Get resource file path (compatible with PyInstaller packaging)
 def _resource_path(filename):
-    """获取资源文件的绝对路径，兼容 PyInstaller 打包"""
+    """Get absolute path of resource file, compatible with PyInstaller packaging"""
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, filename)
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
 
-# 默认快捷键配置
+# Default shortcut configuration
 DEFAULT_SHORTCUTS = {
-    'calculate': '<F5>',
-    'calculate_alt': '<Control-Return>',
+    'calculate': '<Control-Return>',
+    'calculate_alt': '<F5>',
     'clear': '<Control-d>',
     'undo': '<Control-z>',
     'redo': '<Control-y>',
@@ -61,9 +65,10 @@ DEFAULT_SHORTCUTS = {
     'save_file': '<Control-s>',
     'font_increase': '<Control-equal>',
     'font_decrease': '<Control-minus>',
+    'help': '<F1>',
 }
 
-# 快捷键显示名称
+# Shortcut display names
 SHORTCUT_NAMES_EN = {
     'calculate': 'Calculate',
     'calculate_alt': 'Calculate (Alt)',
@@ -75,6 +80,7 @@ SHORTCUT_NAMES_EN = {
     'save_file': 'Save Result',
     'font_increase': 'Font Increase',
     'font_decrease': 'Font Decrease',
+    'help': 'Help',
 }
 
 SHORTCUT_NAMES_ZH = {
@@ -88,14 +94,146 @@ SHORTCUT_NAMES_ZH = {
     'save_file': '保存结果',
     'font_increase': '放大字体',
     'font_decrease': '缩小字体',
+    'help': '帮助',
 }
 
 
 def shortcut_display(key_str):
-    """将 tkinter 快捷键字符串转为可读格式，如 <Control-s> -> Ctrl+S"""
+    """Convert tkinter shortcut string to readable format, e.g. <Control-s> -> Ctrl+S"""
     s = key_str.strip('<>').replace('Control', 'Ctrl').replace('Return', 'Enter')
     parts = s.split('-')
     return '+'.join(p.upper() if len(p) == 1 else p for p in parts)
+
+
+class UpdateChecker:
+    """Background update checker"""
+    GITHUB_API_URL = "https://api.github.com/repos/matthewzu/CalcPaper/releases/latest"
+
+    def __init__(self, current_version, language, callback):
+        self.current_version = current_version
+        self.language = language
+        self.callback = callback  # callback(new_version, download_url)
+
+    def check(self):
+        """Execute check in background thread"""
+        thread = threading.Thread(target=self._do_check, daemon=True)
+        thread.start()
+
+    def _do_check(self):
+        try:
+            result = self._fetch_latest_version()
+            if result:
+                new_version, download_url = result
+                if self._compare_versions(self.current_version, new_version):
+                    self.callback(new_version, download_url)
+        except Exception:
+            pass  # Silent ignore all errors
+
+    def _fetch_latest_version(self):
+        try:
+            req = urllib.request.Request(self.GITHUB_API_URL)
+            req.add_header('Accept', 'application/vnd.github.v3+json')
+            req.add_header('User-Agent', 'CalcPaper-UpdateChecker')
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status != 200:
+                    return None
+                data = json.loads(response.read().decode('utf-8'))
+                tag_name = data.get('tag_name', '')
+                html_url = data.get('html_url', '')
+                return (tag_name, html_url)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _compare_versions(current, remote):
+        """Compare version strings. Returns True if remote is newer."""
+        def parse_ver(v):
+            v = v.lstrip('v').strip()
+            parts = []
+            for p in v.split('.'):
+                try:
+                    parts.append(int(p))
+                except ValueError:
+                    parts.append(0)
+            return parts
+
+        cur = parse_ver(current)
+        rem = parse_ver(remote)
+        # Pad to same length
+        max_len = max(len(cur), len(rem))
+        cur.extend([0] * (max_len - len(cur)))
+        rem.extend([0] * (max_len - len(rem)))
+        return rem > cur
+
+
+class AutoCompletePopup:
+    """Autocomplete popup widget"""
+    def __init__(self, text_widget, root):
+        self.text_widget = text_widget
+        self.root = root
+        self.popup = None
+        self.listbox = None
+        self.candidates = []
+        self.selected_index = 0
+
+    def show(self, candidates, x, y):
+        """Show popup at position with candidates list"""
+        self.hide()
+        if not candidates:
+            return
+        self.candidates = candidates
+        self.selected_index = 0
+
+        self.popup = tk.Toplevel(self.root)
+        self.popup.wm_overrideredirect(True)
+        self.popup.wm_geometry(f"+{x}+{y}")
+
+        self.listbox = tk.Listbox(self.popup, font=("Consolas", 10),
+                                   selectmode=tk.SINGLE, exportselection=False,
+                                   width=30, height=min(len(candidates), 8))
+        self.listbox.pack()
+
+        for c in candidates:
+            self.listbox.insert(tk.END, c)
+
+        self.listbox.selection_set(0)
+        self.listbox.bind('<Double-Button-1>', lambda e: self.select_current())
+
+        self.popup.bind('<FocusOut>', lambda e: self.root.after(100, self._check_focus))
+
+    def _check_focus(self):
+        try:
+            if self.popup and not self.popup.focus_get():
+                self.hide()
+        except:
+            pass
+
+    def hide(self):
+        if self.popup:
+            try:
+                self.popup.destroy()
+            except:
+                pass
+            self.popup = None
+            self.listbox = None
+            self.candidates = []
+
+    def is_visible(self):
+        return self.popup is not None
+
+    def select_current(self):
+        if self.candidates and 0 <= self.selected_index < len(self.candidates):
+            return self.candidates[self.selected_index]
+        return None
+
+    def move_selection(self, direction):
+        """direction: -1 up, 1 down"""
+        if not self.listbox or not self.candidates:
+            return
+        self.selected_index = max(0, min(len(self.candidates) - 1, self.selected_index + direction))
+        self.listbox.selection_clear(0, tk.END)
+        self.listbox.selection_set(self.selected_index)
+        self.listbox.see(self.selected_index)
 
 
 class CalculatorGUIAdvanced:
@@ -104,47 +242,59 @@ class CalculatorGUIAdvanced:
         self.min_font_size = 8
         self.max_font_size = 32
 
-        # 设置窗口图标
+        # Set window icon
         self._set_icon()
 
-        # 加载配置（语言、字体、窗口大小、快捷键）
+        # Load config (language, font, window size, shortcuts)
         self.load_config()
 
         self.update_title()
 
-        # 创建计算器实例
+        # Create calculator instance
         self.calculator = CalculatorPaperAdvanced(language=self.language)
 
-        # GUI专用的历史记录（保存输入和输出文本）
+        # GUI-specific history (saves input and output text)
         self.gui_history = []
         self.gui_history_index = -1
         self.last_saved_input = ""
 
-        # 创建界面
+        # Create widgets
         self.create_widgets()
 
-        # 绑定快捷键
+        # Bind shortcuts
         self.bind_shortcuts()
 
-        # 绑定窗口大小变化事件
+        # Bind window resize event
         self.root.bind('<Configure>', self.on_window_configure)
 
-        # 恢复上次会话
+        # Restore last session
         self.root.after(100, self._restore_session_and_init)
 
-        # 恢复窗口位置（需要在窗口显示后）
+        # Restore window position (needs to be after window is shown)
         self.root.after(150, self._apply_saved_position)
 
-        # 绑定输入框的修改事件
+        # Autocomplete widget
+        self.autocomplete = AutoCompletePopup(self.input_text, self.root)
+
+        # Bind autocomplete key events
+        # KeyPress for intercepting Tab/Enter/Up/Down/Escape before text widget processes them
+        self.input_text.bind('<KeyPress>', self._on_keypress_for_autocomplete)
+        # KeyRelease for updating autocomplete popup after text changes
+        self.input_text.bind('<KeyRelease>', self._on_keyrelease_for_autocomplete)
+
+        # Bind input modification event
         self.input_text.bind('<<Modified>>', self.on_input_modified)
 
-        # 窗口关闭时保存
+        # Save on window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-    # ==================== 配置持久化 ====================
+        # Start background update check (2 second delay)
+        self.root.after(2000, self._start_update_check)
+
+    # ==================== Config Persistence ====================
 
     def _set_icon(self):
-        """设置窗口图标"""
+        """Set window icon"""
         try:
             icon_path = _resource_path('calcpaper.ico')
             if os.path.exists(icon_path):
@@ -153,10 +303,10 @@ class CalculatorGUIAdvanced:
             pass
 
     def load_config(self):
-        """加载配置文件
+        """Load configuration file
         
-        先从默认位置（exe目录）读取配置，其中可能包含用户自定义的 data_dir。
-        然后用 data_dir 确定 config 和 session 文件的实际路径。
+        First read config from default location (exe directory), which may contain user-defined data_dir.
+        Then use data_dir to determine actual paths for config and session files.
         """
         defaults = {
             'language': 'en',
@@ -167,7 +317,7 @@ class CalculatorGUIAdvanced:
             'shortcuts': DEFAULT_SHORTCUTS.copy(),
         }
 
-        # 第一步：从引导配置读取 data_dir
+        # Step 1: Read data_dir from bootstrap config
         config = defaults.copy()
         try:
             if os.path.exists(BOOTSTRAP_CONFIG):
@@ -180,13 +330,13 @@ class CalculatorGUIAdvanced:
         except Exception:
             pass
 
-        # 确定数据目录
+        # Determine data directory
         self.data_dir = config.get('data_dir', DEFAULT_DATA_DIR)
         os.makedirs(self.data_dir, exist_ok=True)
         self.config_file = os.path.join(self.data_dir, 'calcpaper_config.json')
         self.session_file = os.path.join(self.data_dir, 'calcpaper_session.json')
 
-        # 第二步：如果 data_dir 不是默认目录，从实际 data_dir 重新读取完整配置
+        # Step 2: If data_dir is not default, re-read full config from actual data_dir
         if self.config_file != BOOTSTRAP_CONFIG:
             try:
                 if os.path.exists(self.config_file):
@@ -205,16 +355,16 @@ class CalculatorGUIAdvanced:
         self._saved_position = config.get('window_position')
         self.shortcuts = config['shortcuts']
 
-        # 先设置窗口大小
+        # Set window size first
         self.root.geometry(self._saved_geometry)
 
     def _apply_saved_position(self):
-        """在窗口显示后应用保存的位置"""
+        """Apply saved position after window is shown"""
         if self._saved_position:
             try:
                 x, y = self._saved_position.split(',')
                 x, y = int(x), int(y)
-                # 确保窗口不会出现在屏幕外
+                # Ensure window doesn't appear off-screen
                 screen_w = self.root.winfo_screenwidth()
                 screen_h = self.root.winfo_screenheight()
                 x = max(0, min(x, screen_w - 100))
@@ -224,7 +374,7 @@ class CalculatorGUIAdvanced:
                 pass
 
     def save_config(self):
-        """保存配置文件"""
+        """Save configuration file"""
         w = self.root.winfo_width()
         h = self.root.winfo_height()
         geo = f"{w}x{h}"
@@ -243,17 +393,17 @@ class CalculatorGUIAdvanced:
             os.makedirs(self.data_dir, exist_ok=True)
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)
-            # 如果 data_dir 不是默认目录，在默认目录也保存一份引导配置（只含 data_dir）
+            # If data_dir is not default, also save a bootstrap config in default dir (containing only data_dir)
             if self.config_file != BOOTSTRAP_CONFIG:
                 with open(BOOTSTRAP_CONFIG, 'w', encoding='utf-8') as f:
                     json.dump({'data_dir': self.data_dir}, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
 
-    # ==================== 会话持久化 ====================
+    # ==================== Session Persistence ====================
 
     def save_session(self):
-        """保存当前会话（输入和输出内容）"""
+        """Save current session (input and output content)"""
         try:
             input_content = self.input_text.get("1.0", "end-1c")
             output_content = self.output_text.get("1.0", "end-1c")
@@ -268,7 +418,7 @@ class CalculatorGUIAdvanced:
             pass
 
     def load_session(self):
-        """加载上次会话"""
+        """Load last session"""
         try:
             if os.path.exists(self.session_file):
                 with open(self.session_file, 'r', encoding='utf-8') as f:
@@ -278,7 +428,7 @@ class CalculatorGUIAdvanced:
         return None
 
     def _restore_session_and_init(self):
-        """恢复会话并初始化状态"""
+        """Restore session and initialize state"""
         session = self.load_session()
         if session:
             input_content = session.get('input', '')
@@ -296,18 +446,50 @@ class CalculatorGUIAdvanced:
                 self.output_text.config(state=tk.DISABLED)
             self.last_saved_input = input_content
 
-        # 保存初始状态
+        # Save initial state
         input_c = self.input_text.get("1.0", "end-1c")
         output_c = self.output_text.get("1.0", "end-1c")
         self.save_gui_state(input_c, output_c)
 
     def on_close(self):
-        """窗口关闭时保存配置和会话"""
+        """Save config and session on window close"""
         self.save_config()
         self.save_session()
         self.root.destroy()
 
-    # ==================== 窗口和标题 ====================
+    def _start_update_check(self):
+        """Start background update check"""
+        def on_update_found(new_version, download_url):
+            # Schedule callback on main thread
+            self.root.after(0, lambda: self._show_update_notification(new_version, download_url))
+
+        checker = UpdateChecker(VERSION, self.language, on_update_found)
+        checker.check()
+
+    def _show_update_notification(self, new_version, download_url):
+        """Show update notification"""
+        if self.language == 'en':
+            msg = f"New version {new_version} available!"
+            self.status_bar.config(text=f"🆕 {msg} Click here to download.")
+        else:
+            msg = f"发现新版本 {new_version}！"
+            self.status_bar.config(text=f"🆕 {msg} 点击此处下载。")
+
+        # Make status bar clickable
+        self.status_bar.bind('<Button-1>', lambda e: webbrowser.open(download_url))
+        self.status_bar.config(cursor="hand2", fg="blue")
+
+        # Reset after 30 seconds
+        def reset_status():
+            try:
+                self.status_bar.unbind('<Button-1>')
+                self.status_bar.config(cursor="", fg="black")
+                self.restore_normal_status()
+            except:
+                pass
+        self.root.after(30000, reset_status)
+
+    # ==================== Window and Title ====================
 
     def on_window_configure(self, event):
         if event.widget == self.root:
@@ -319,7 +501,7 @@ class CalculatorGUIAdvanced:
         else:
             self.root.title(f"计算稿纸 - 高级版 v{VERSION}")
 
-    # ==================== 语言切换 ====================
+    # ==================== Language Toggle ====================
 
     def toggle_language(self):
         self.language = 'zh' if self.language == 'en' else 'en'
@@ -328,7 +510,7 @@ class CalculatorGUIAdvanced:
         self.update_button_texts()
 
     def update_button_texts(self):
-        """更新按钮文本（含快捷键显示）"""
+        """Update button texts (with shortcut display)"""
         sc = self.shortcuts
 
         def _btn(en, zh, key):
@@ -352,11 +534,13 @@ class CalculatorGUIAdvanced:
             self.save_button.config(text=_btn("Save Result", "保存结果", "save_file"))
         if hasattr(self, 'lang_button'):
             self.lang_button.config(text="中文" if self.language == 'en' else "EN")
+        if hasattr(self, 'help_button'):
+            self.help_button.config(text=_btn("Help", "帮助", "help"))
 
         self.update_initial_font_display()
         self.update_undo_redo_buttons()
 
-    # ==================== 字体 ====================
+    # ==================== Font ====================
 
     def increase_font(self):
         if self.font_size < self.max_font_size:
@@ -388,7 +572,7 @@ class CalculatorGUIAdvanced:
         if hasattr(self, 'font_size_label'):
             self.font_size_label.config(text=f"{self.font_size}")
 
-    # ==================== 界面创建 ====================
+    # ==================== Widget Creation ====================
 
     def create_widgets(self):
         main_frame = tk.Frame(self.root)
@@ -399,7 +583,7 @@ class CalculatorGUIAdvanced:
         main_frame.grid_rowconfigure(2, weight=0)
         main_frame.grid_columnconfigure(0, weight=1)
 
-        # ========== 输入输出区域 ==========
+        # ========== Input/Output Area ==========
         io_frame = tk.Frame(main_frame)
         io_frame.grid(row=0, column=0, sticky="nsew")
         io_frame.grid_columnconfigure(0, weight=1)
@@ -421,7 +605,7 @@ class CalculatorGUIAdvanced:
         self.output_text = scrolledtext.ScrolledText(io_frame, wrap=tk.WORD, font=("Consolas", self.font_size), state=tk.DISABLED)
         self.output_text.grid(row=1, column=1, sticky="nsew", padx=(5, 0))
 
-        # ========== 按钮栏 ==========
+        # ========== Button Bar ==========
         button_frame = tk.Frame(main_frame, height=60)
         button_frame.grid(row=1, column=0, sticky="ew", pady=(10, 0))
         button_frame.grid_propagate(False)
@@ -477,11 +661,16 @@ class CalculatorGUIAdvanced:
                                      command=self.toggle_language, font=("Arial", 10), padx=12, pady=3, bg="#9C27B0", fg="white")
         self.lang_button.pack(side=tk.LEFT, padx=3)
 
-        # 快捷键配置按钮
+        # Shortcut config button
         shortcut_text = "⌨" 
         self.shortcut_button = tk.Button(self.scrollable_frame, text=shortcut_text,
                                          command=self.open_shortcut_config, font=("Arial", 10), padx=8, pady=3, bg="#607D8B", fg="white")
         self.shortcut_button.pack(side=tk.LEFT, padx=3)
+
+        # Help button
+        self.help_button = tk.Button(self.scrollable_frame, text=_btn_text("Help", "帮助", "help"),
+                                     command=self.show_help, font=("Arial", 10), padx=8, pady=3, bg="#2196F3", fg="white")
+        self.help_button.pack(side=tk.LEFT, padx=3)
 
         self.font_plus_button = tk.Button(self.scrollable_frame, text="A+", command=self.increase_font,
                                           font=("Arial", 10, "bold"), padx=8, pady=3, bg="#4CAF50", fg="white")
@@ -498,7 +687,7 @@ class CalculatorGUIAdvanced:
         self.button_canvas.bind("<MouseWheel>", lambda e: self.button_canvas.xview_scroll(int(-1*(e.delta/120)), "units"))
         self.root.after(100, self.setup_button_scrolling)
 
-        # ========== 状态栏 ==========
+        # ========== Status Bar ==========
         status_frame = tk.Frame(main_frame, height=25)
         status_frame.grid(row=2, column=0, sticky="ew", pady=(5, 0))
         status_frame.grid_propagate(False)
@@ -509,7 +698,7 @@ class CalculatorGUIAdvanced:
 
         self.root.after(100, self.update_initial_font_display)
 
-    # ==================== 按钮滚动 ====================
+    # ==================== Button Scrolling ====================
 
     def setup_button_scrolling(self):
         self.root.update_idletasks()
@@ -535,11 +724,11 @@ class CalculatorGUIAdvanced:
         except (tk.TclError, AttributeError):
             pass
 
-    # ==================== 快捷键 ====================
+    # ==================== Shortcuts ====================
 
     def bind_shortcuts(self):
-        """绑定快捷键（从配置读取）"""
-        # 先解绑所有已知快捷键
+        """Bind shortcuts (from config)"""
+        # First unbind all known shortcuts
         self._unbind_all_shortcuts()
 
         sc = self.shortcuts
@@ -554,6 +743,7 @@ class CalculatorGUIAdvanced:
             'save_file': lambda e: self.save_file(),
             'font_increase': lambda e: self.increase_font(),
             'font_decrease': lambda e: self.decrease_font(),
+            'help': lambda e: self.show_help(),
         }
 
         self._bound_keys = []
@@ -562,7 +752,7 @@ class CalculatorGUIAdvanced:
                 try:
                     self.root.bind(key_str, actions[action_name])
                     self._bound_keys.append(key_str)
-                    # 也绑定大写版本
+                    # Also bind uppercase version
                     if 'Control-' in key_str and len(key_str.split('-')[-1].rstrip('>')) == 1:
                         upper_key = key_str[:-2] + key_str[-2].upper() + key_str[-1]
                         if upper_key != key_str:
@@ -572,7 +762,7 @@ class CalculatorGUIAdvanced:
                     pass
 
     def _unbind_all_shortcuts(self):
-        """解绑所有已绑定的快捷键"""
+        """Unbind all bound shortcuts"""
         if hasattr(self, '_bound_keys'):
             for key in self._bound_keys:
                 try:
@@ -582,7 +772,7 @@ class CalculatorGUIAdvanced:
         self._bound_keys = []
 
     def open_shortcut_config(self):
-        """打开设置对话框（快捷键 + 数据目录）"""
+        """Open settings dialog (shortcuts + data directory)"""
         dialog = tk.Toplevel(self.root)
         title = "Settings" if self.language == 'en' else "设置"
         dialog.title(title)
@@ -592,7 +782,7 @@ class CalculatorGUIAdvanced:
 
         names = SHORTCUT_NAMES_EN if self.language == 'en' else SHORTCUT_NAMES_ZH
 
-        # ===== 数据目录 =====
+        # ===== Data Directory =====
         dir_frame = tk.LabelFrame(dialog,
                                    text="Data Directory" if self.language == 'en' else "数据目录",
                                    font=("Arial", 10, "bold"), padx=10, pady=5)
@@ -617,7 +807,7 @@ class CalculatorGUIAdvanced:
 
         tk.Button(dir_row, text="...", command=browse_dir, padx=8).pack(side=tk.LEFT)
 
-        # ===== 快捷键 =====
+        # ===== Shortcuts =====
         key_frame = tk.LabelFrame(dialog,
                                    text="Keyboard Shortcuts" if self.language == 'en' else "快捷键",
                                    font=("Arial", 10, "bold"), padx=10, pady=5)
@@ -669,12 +859,12 @@ class CalculatorGUIAdvanced:
 
             entry.bind('<Key>', make_capture(entry))
 
-        # ===== 按钮 =====
+        # ===== Buttons =====
         btn_frame = tk.Frame(dialog)
         btn_frame.pack(pady=10)
 
         def apply_settings():
-            # 保存数据目录
+            # Save data directory
             new_dir = dir_entry.get().strip()
             if new_dir and new_dir != self.data_dir:
                 if os.path.isdir(new_dir) or not os.path.exists(new_dir):
@@ -687,7 +877,7 @@ class CalculatorGUIAdvanced:
                         "Warning" if self.language == 'en' else "警告",
                         "Invalid directory path" if self.language == 'en' else "无效的目录路径")
                     return
-            # 保存快捷键
+            # Save shortcuts
             for action_name, entry in entries.items():
                 self.shortcuts[action_name] = entry.get().strip()
             self.bind_shortcuts()
@@ -715,7 +905,7 @@ class CalculatorGUIAdvanced:
         tk.Button(btn_frame, text=cancel_text, command=dialog.destroy,
                   font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
 
-    # ==================== 计算 ====================
+    # ==================== Calculation ====================
 
     def calculate(self):
         try:
@@ -785,7 +975,7 @@ class CalculatorGUIAdvanced:
                 if eq_pos > 0:
                     self.output_text.tag_add("result", f"{i}.{eq_pos}", line_end)
 
-    # ==================== 清空/示例/文件 ====================
+    # ==================== Clear/Example/File ====================
 
     def clear_all(self):
         self.input_text.delete("1.0", tk.END)
@@ -822,6 +1012,18 @@ bitmap(color, 1)
 hex(255)
 hex(color)
 
+# Date/time arithmetic
+today = Y20260410
+deadline = today + D10
+next_month = today + M1
+diff = Y20260410 - Y20260101
+
+# Time arithmetic
+start = T090000
+end = T173000
+duration = end - start
+lunch = start + h3 + m30
+
 # Percentage calculation
 price = 100
 discount = price * 15%
@@ -852,6 +1054,18 @@ bitmap(颜色, 1)
 hex(255)
 hex(颜色)
 
+# 日期运算
+今天 = Y20260410
+截止日 = 今天 + D10
+下个月 = 今天 + M1
+天数差 = Y20260410 - Y20260101
+
+# 时间运算
+上班 = T090000
+下班 = T173000
+工时 = 下班 - 上班
+午餐 = 上班 + h3 + m30
+
 # 百分数计算
 价格 = 100
 折扣 = 价格 * 15%
@@ -872,7 +1086,7 @@ hex(颜色)
             try:
                 with open(filename, 'r', encoding='utf-8') as f:
                     content = f.read()
-                # 清理计算结果标注，提取原始表达式
+                # Strip result annotations, extract original expressions
                 content = self._strip_result_annotations(content)
                 self.input_text.unbind('<<Modified>>')
                 self.input_text.delete("1.0", tk.END)
@@ -885,51 +1099,51 @@ hex(颜色)
                 messagebox.showerror("Error" if self.language == 'en' else "错误", str(e))
 
     def _strip_result_annotations(self, text):
-        """清理计算结果标注，提取原始输入表达式
+        """Strip result annotations, extract original input expressions
         
-        输出格式示例：
+        Output format examples:
           a = 0xFF        = 255
           bitmap(a, 1)    = 255  # 255
           hex(a)          = 0xFF  # 255
-          位索引行、十六进制行等（bitmap输出的附加行）
+          Bit index lines, hex lines, etc. (bitmap output supplementary lines)
         
-        需要：
-        - 去掉 bitmap/hex 输出的附加信息行（缩进的十六进制/二进制/位数/位索引行）
-        - 去掉结果部分（表达式后面多余的 = result 和 # comment）
+        Actions:
+        - Remove bitmap/hex output supplementary lines (indented hex/binary/bits/index lines)
+        - Remove result portion (extra = result and # comment after expression)
         """
         lines = text.split('\n')
         cleaned = []
         for line in lines:
             stripped = line.strip()
-            # 跳过 bitmap 输出的附加行（以空格开头的信息行）
+            # Skip bitmap output supplementary lines (indented info lines)
             if stripped and line.startswith('  ') and any(stripped.startswith(kw) for kw in [
                 '十六进制:', '二进制:', '位数:', '位索引',
                 'Hexadecimal:', 'Binary:', 'Bits:', 'Bit indices',
                 '|'
             ]):
                 continue
-            # 空行和注释行保持不变
+            # Empty lines and comment lines stay unchanged
             if not stripped or stripped.startswith('#'):
                 cleaned.append(line)
                 continue
-            # 处理带结果标注的行
-            # 格式: "原始表达式    = 结果  # 注释"
-            # 需要找到原始表达式中最后一个有意义的 = 之后的结果部分
-            # 策略：如果行中有多个 =，第一个是赋值，后面的是结果
+            # Process lines with result annotations
+            # Format: "original expression    = result  # comment"
+            # Need to find the result portion after the last meaningful = in the original expression
+            # Strategy: if line has multiple =, first is assignment, rest are results
             if '=' in stripped:
-                # 检查是否是赋值表达式（如 a = 0xFF）
+                # Check if it's an assignment expression (e.g. a = 0xFF)
                 first_eq = stripped.index('=')
                 left = stripped[:first_eq].strip()
                 right_part = stripped[first_eq+1:].strip()
                 
-                # 检查左边是否是变量名
+                # Check if left side is a variable name
                 is_assignment = bool(re.match(r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$', left))
                 
                 if is_assignment:
-                    # 赋值行：a = 0xFF        = 255  # 注释
-                    # 需要提取 "a = 原始表达式"
-                    # 在 right_part 中找到结果分隔符（多个空格后的 =）
-                    # 用正则匹配：值部分  空格+= 结果
+                    # Assignment line: a = 0xFF        = 255  # comment
+                    # Need to extract "a = original expression"
+                    # Find result separator (multiple spaces followed by =) in right_part
+                    # Regex match: value part  spaces+= result
                     match = re.match(r'^(.+?)\s{2,}=\s', right_part)
                     if match:
                         original_expr = match.group(1).strip()
@@ -937,8 +1151,8 @@ hex(颜色)
                     else:
                         cleaned.append(stripped)
                 else:
-                    # 非赋值行（如 bitmap(a, 1)    = 255）
-                    # 找到多空格+= 的位置
+                    # Non-assignment line (e.g. bitmap(a, 1)    = 255)
+                    # Find position of multiple spaces + =
                     match = re.match(r'^(.+?)\s{2,}=\s', stripped)
                     if match:
                         original_expr = match.group(1).strip()
@@ -962,7 +1176,7 @@ hex(颜色)
             except Exception as e:
                 messagebox.showerror("Error" if self.language == 'en' else "错误", str(e))
 
-    # ==================== 撤销/恢复 ====================
+    # ==================== Undo/Redo ====================
 
     def save_gui_state(self, input_text, output_text):
         if self.gui_history_index < len(self.gui_history) - 1:
@@ -1027,6 +1241,300 @@ hex(颜色)
             self.undo_button.config(state=tk.NORMAL if self.gui_history_index > 0 else tk.DISABLED)
         if hasattr(self, 'redo_button'):
             self.redo_button.config(state=tk.NORMAL if self.gui_history_index < len(self.gui_history) - 1 else tk.DISABLED)
+
+    # ==================== Autocomplete ====================
+
+    def _get_defined_variables(self):
+        """Parse defined variable names from input area text in real-time"""
+        content = self.input_text.get("1.0", "end-1c")
+        variables = []
+        pattern = re.compile(r'^([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*=', re.MULTILINE)
+        reserved_pattern = re.compile(r'^[YTMWDhms]\d+$')
+        for match in pattern.finditer(content):
+            name = match.group(1)
+            if not reserved_pattern.match(name):
+                if name not in variables:
+                    variables.append(name)
+        return variables
+
+    def _get_current_prefix(self):
+        """Get the variable name prefix being typed at cursor and its start position"""
+        try:
+            cursor_pos = self.input_text.index(tk.INSERT)
+            line, col = cursor_pos.split('.')
+            col = int(col)
+            line_text = self.input_text.get(f"{line}.0", f"{line}.{col}")
+            # Walk backwards to find start of current word
+            i = len(line_text) - 1
+            while i >= 0:
+                ch = line_text[i]
+                if re.match(r'[a-zA-Z0-9_\u4e00-\u9fa5]', ch):
+                    i -= 1
+                else:
+                    break
+            word_start = i + 1
+            prefix = line_text[word_start:]
+            if prefix and re.match(r'[a-zA-Z_\u4e00-\u9fa5]', prefix[0]):
+                start_pos = f"{line}.{word_start}"
+                return (prefix, start_pos)
+            return (None, None)
+        except Exception:
+            return (None, None)
+
+    def _on_keypress_for_autocomplete(self, event):
+        """KeyPress handler: intercept Tab/Enter/Up/Down/Escape when popup is visible"""
+        keysym = event.keysym
+
+        if keysym == 'Escape' and self.autocomplete.is_visible():
+            self.autocomplete.hide()
+            return "break"
+
+        if keysym in ('Up', 'Down') and self.autocomplete.is_visible():
+            direction = -1 if keysym == 'Up' else 1
+            self.autocomplete.move_selection(direction)
+            return "break"
+
+        if keysym == 'Tab' and self.autocomplete.is_visible():
+            selected = self.autocomplete.select_current()
+            if selected:
+                prefix, prefix_start = self._get_current_prefix()
+                if prefix_start:
+                    self._insert_completion(selected, prefix_start)
+            self.autocomplete.hide()
+            return "break"
+
+        # Don't intercept other keys
+        return None
+
+    def _on_keyrelease_for_autocomplete(self, event):
+        """KeyRelease handler: update autocomplete popup after text changes"""
+        keysym = event.keysym
+        # Skip modifier keys and keys already handled by KeyPress
+        if keysym in ('Escape', 'Up', 'Down', 'Tab', 'Return',
+                       'Shift_L', 'Shift_R', 'Control_L', 'Control_R',
+                       'Alt_L', 'Alt_R', 'Caps_Lock'):
+            return
+        self._update_autocomplete()
+
+    def _update_autocomplete(self):
+        """Update candidate list based on current prefix"""
+        prefix, prefix_start = self._get_current_prefix()
+        if not prefix or len(prefix) < 1:
+            self.autocomplete.hide()
+            return
+
+        variables = self._get_defined_variables()
+        prefix_lower = prefix.lower()
+        matches = [v for v in variables if v.lower().startswith(prefix_lower) and v != prefix]
+
+        if matches:
+            try:
+                bbox = self.input_text.bbox(tk.INSERT)
+                if bbox:
+                    x = self.input_text.winfo_rootx() + bbox[0]
+                    y = self.input_text.winfo_rooty() + bbox[1] + bbox[3]
+                    self.autocomplete.show(matches, x, y)
+                else:
+                    self.autocomplete.hide()
+            except Exception:
+                self.autocomplete.hide()
+        else:
+            self.autocomplete.hide()
+
+    def _insert_completion(self, variable_name, prefix_start):
+        """Insert selected variable name into input area, replacing typed prefix"""
+        cursor_pos = self.input_text.index(tk.INSERT)
+        self.input_text.delete(prefix_start, cursor_pos)
+        self.input_text.insert(prefix_start, variable_name)
+        self.autocomplete.hide()
+
+    # ==================== Help ====================
+
+    def show_help(self):
+        """Show help dialog matching current language"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Help" if self.language == 'en' else "帮助")
+        dialog.geometry("700x550")
+        dialog.transient(self.root)
+
+        text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=("Consolas", 10), state=tk.NORMAL)
+        text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        if self.language == 'en':
+            content = self._help_text_en()
+        else:
+            content = self._help_text_zh()
+
+        text.insert("1.0", content)
+        text.config(state=tk.DISABLED)
+
+        tk.Button(dialog, text="OK", command=dialog.destroy, padx=20, pady=5).pack(pady=(0, 10))
+
+    def _help_text_en(self):
+        return f"""CalcPaper v{VERSION} - Smart Calculator for Programmers
+
+=== Basic Operations ===
+  +, -, *, /, ()          Arithmetic
+  variable = expression   Variable assignment
+  6.5%, 10%               Percentage
+  # comment               Comment line
+
+=== Number Formats ===
+  0xFF, 0x1A2B            Hexadecimal
+  0b1010, 0b11110000      Binary
+  255                     Decimal
+
+=== Bitwise Operations ===
+  <<   Left shift         e.g. 0b1010 << 2
+  >>   Right shift        e.g. 0xFF >> 4
+  &    AND                e.g. 0xFF & 0x0F
+  |    OR                 e.g. 0xF0 | 0x0F
+  ^    XOR                e.g. 0xFF ^ 0xAA
+  ~    NOT                e.g. ~0b1010
+
+=== Built-in Functions ===
+  bitmap(value)           Bit visualization (little endian, default)
+  bitmap(value, 1)        Bit visualization (big endian)
+  bitmap(value, 0, 32)    Bit visualization with width
+  swap(value)             Byte order swap (can use in expressions)
+  hex(value)              Display as hexadecimal
+
+=== Date/Time Arithmetic (NEW in v2.0) ===
+  Yyyyymmdd               Date literal      e.g. Y20260410
+  Thhmmss                 Time literal      e.g. T143000
+
+  Date durations (UPPERCASE):
+    Mxx   months          e.g. M3
+    Wxx   weeks           e.g. W2
+    Dxx   days            e.g. D10
+
+  Time durations (lowercase):
+    hxx   hours           e.g. h2
+    mxx   minutes         e.g. m30
+    sxx   seconds         e.g. s45
+
+  Operations:
+    date + duration  ->  date       Y20260410 + D10 = Y20260420
+    date - duration  ->  date       Y20260410 - M1  = Y20260310
+    date - date      ->  days       Y20260410 - Y20260101 = 99
+    time + duration  ->  time       T090000 + h3 + m30 = T123000
+    time - duration  ->  time       T143000 - m30 = T140000
+    time - time      ->  seconds    T173000 - T090000 = 30600
+
+=== Reserved Keywords ===
+  Y, T, M, W, D (uppercase) and h, m, s (lowercase) followed by
+  digits are reserved and cannot be used as variable names.
+  e.g. M3, h2, Y20260410, T143000 are all reserved.
+
+=== Keyboard Shortcuts ===
+  Ctrl+Enter    Calculate
+  F5            Calculate (alt)
+  Ctrl+D        Clear
+  Ctrl+Z        Undo
+  Ctrl+Y        Redo
+  Ctrl+L        Load example
+  Ctrl+O        Open file
+  Ctrl+S        Save result
+  Ctrl+=/+      Font increase
+  Ctrl+-        Font decrease
+  F1            Help
+  Tab           Autocomplete confirm
+
+=== Autocomplete ===
+  Type a variable name prefix -> popup appears
+  Tab           Confirm selection
+  Up/Down       Navigate candidates
+  Escape        Dismiss popup
+
+=== Tips ===
+  - Results are auto-saved and restored on next launch
+  - Window size, position, language, font are remembered
+  - All shortcuts are customizable via Settings button
+  - Update check runs in background on startup
+"""
+
+    def _help_text_zh(self):
+        return f"""CalcPaper v{VERSION} - 程序员的智能计算稿纸
+
+=== 基本运算 ===
+  +, -, *, /, ()          四则运算
+  变量名 = 表达式          变量赋值
+  6.5%, 10%               百分数
+  # 注释                   注释行
+
+=== 数值格式 ===
+  0xFF, 0x1A2B            16进制
+  0b1010, 0b11110000      2进制
+  255                     10进制
+
+=== 位运算 ===
+  <<   左移               例: 0b1010 << 2
+  >>   右移               例: 0xFF >> 4
+  &    与                 例: 0xFF & 0x0F
+  |    或                 例: 0xF0 | 0x0F
+  ^    异或               例: 0xFF ^ 0xAA
+  ~    非                 例: ~0b1010
+
+=== 内置函数 ===
+  bitmap(数值)            位结构可视化（小端，默认）
+  bitmap(数值, 1)         位结构可视化（大端）
+  bitmap(数值, 0, 32)     位结构可视化（指定宽度）
+  swap(数值)              字节序交换（可用于表达式）
+  hex(数值)               显示16进制
+
+=== 日期/时间运算（v2.0 新增）===
+  Yyyyymmdd               日期字面量      例: Y20260410
+  Thhmmss                 时间字面量      例: T143000
+
+  日期时长（大写）：
+    Mxx   月              例: M3
+    Wxx   周              例: W2
+    Dxx   天              例: D10
+
+  时间时长（小写）：
+    hxx   小时            例: h2
+    mxx   分钟            例: m30
+    sxx   秒              例: s45
+
+  运算规则：
+    日期 + 时长  ->  日期       Y20260410 + D10 = Y20260420
+    日期 - 时长  ->  日期       Y20260410 - M1  = Y20260310
+    日期 - 日期  ->  天数       Y20260410 - Y20260101 = 99
+    时间 + 时长  ->  时间       T090000 + h3 + m30 = T123000
+    时间 - 时长  ->  时间       T143000 - m30 = T140000
+    时间 - 时间  ->  秒数       T173000 - T090000 = 30600
+
+=== 保留关键字 ===
+  Y、T、M、W、D（大写）和 h、m、s（小写）后跟数字
+  为保留关键字，不可用作变量名。
+  例: M3、h2、Y20260410、T143000 均为保留关键字。
+
+=== 快捷键 ===
+  Ctrl+Enter    计算
+  F5            计算（备选）
+  Ctrl+D        清空
+  Ctrl+Z        撤销
+  Ctrl+Y        恢复
+  Ctrl+L        加载示例
+  Ctrl+O        打开文件
+  Ctrl+S        保存结果
+  Ctrl+=/+      放大字体
+  Ctrl+-        缩小字体
+  F1            帮助
+  Tab           自动补全确认
+
+=== 自动补全 ===
+  输入已定义的变量名前缀 -> 弹出候选列表
+  Tab           确认选择
+  上/下方向键    导航候选项
+  Escape        关闭弹窗
+
+=== 提示 ===
+  - 计算结果自动保存，下次启动自动恢复
+  - 窗口大小、位置、语言、字体会被记住
+  - 所有快捷键可通过设置按钮自定义
+  - 启动时后台自动检查更新
+"""
 
 
 def main():

@@ -1,0 +1,23 @@
+# Date/Time Arithmetic Example
+
+# Date operations
+today = Y20260410
+deadline = today + D10
+next_month = today + M1
+next_week = today + W2
+diff = Y20260410 - Y20260101
+
+# Time operations
+start = T090000
+end = T173000
+duration = end - start
+lunch = start + h3 + m30
+break_end = lunch + m45
+
+# Project scheduling
+project_start = Y20260410
+design_phase = project_start + W2
+dev_phase = design_phase + M1
+test_phase = dev_phase + W2
+launch = test_phase + D3
+total_days = launch - project_start

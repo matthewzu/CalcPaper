@@ -22,24 +22,43 @@ jobs:
         body: |
           ## CalcPaper ${{ github.ref_name }}
 
-          高级计算稿纸 - 支持16进制、位运算、双语界面
-          Advanced Calculator - Supports Hex, Bitwise Operations, Bilingual Interface
+          Smart Calculator for Programmers / 程序员的智能计算稿纸
 
-          ### 下载说明 / Download Instructions
-          - **Windows**: Download `CalcPaper.exe`
-          - **macOS**: Download `CalcPaper.dmg`
-          - **Linux**: Download `CalcPaper`
+          ### 📥 Download / 下载
+          - **Windows**: `CalcPaper.exe` — Double-click to run / 双击运行
+          - **macOS**: `CalcPaper.dmg` — Open DMG to run / 打开 DMG 运行
+          - **Linux**: `CalcPaper` — `chmod +x CalcPaper && ./CalcPaper`
 
-          ### 新功能 / Features
-          - ✅ 16进制、2进制、10进制混合运算 / Hex, Binary, Decimal mixed operations
-          - ✅ 位运算支持 (&, |, ^, <<, >>) / Bitwise operations support
-          - ✅ bitmap关键字位结构可视化 / Bitmap keyword visualization
-          - ✅ 中英文双语界面 / Chinese/English bilingual interface
-          - ✅ 字体缩放功能 (8-32) / Font scaling (8-32)
-          - ✅ 语法高亮显示 / Syntax highlighting
-          - ✅ 文件导入导出 / File import/export
+          💡 Supports both GUI and CLI modes / 支持 GUI 和 CLI 双模式:
+          - GUI (default): `CalcPaper`
+          - CLI: `CalcPaper --cli`
 
-          完整文档 / Full Documentation: [README.md](https://github.com/${{ github.repository }})
+          ### 🆕 New in v2.0 / v2.0 新功能
+          - 📅 Date & time arithmetic / 日期时间加减运算 (Y/T/M/W/D/h/m/s)
+          - ✏️ Variable name autocomplete / 变量名自动补全
+          - 🔄 Auto update check on startup / 启动时自动检查更新
+          - 🖥️ Packaged exe supports CLI mode / 打包程序支持 CLI 模式
+          - 📦 Unified version management / 版本号统一管理
+
+          ### ✅ All Features / 全部功能
+          - 🧮 Variable references / 变量引用
+          - 🔢 Hex & Binary support / 16进制/2进制
+          - ⚡ Bitwise operations / 位运算 (<<, >>, &, |, ^, ~)
+          - 📊 bitmap() bit visualization / 位结构可视化
+          - 🔀 swap() byte order swap / 字节序交换
+          - 🔢 hex() hex display / 16进制显示
+          - 📅 Date & time arithmetic / 日期时间运算
+          - 💯 Percentage calculation / 百分数计算
+          - ✏️ Variable autocomplete / 变量自动补全
+          - 🔄 Auto update check / 自动检查更新
+          - 💾 Session auto-restore / 会话自动恢复
+          - ⚙️ Config persistence / 配置持久化
+          - ⌨️ Customizable shortcuts / 可自定义快捷键
+          - 🌏 Bilingual (EN/ZH) / 中英文双语
+          - 🔤 Font scaling / 字体缩放
+          - 🔄 Undo & Redo / 撤销恢复
+
+          Documentation / 文档: [README.md](https://github.com/${{ github.repository }})
         draft: false
         prerelease: false
 
@@ -57,7 +76,7 @@ jobs:
     - name: Build
       run: |
         pip install pyinstaller
-        pyinstaller --onefile --windowed --name=CalcPaper --icon=calcpaper.ico --add-data "calcpaper.ico;." calc_paper_gui.py
+        pyinstaller --onefile --windowed --name=CalcPaper --icon=calcpaper.ico --add-data "calcpaper.ico;." main.py
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v1
       with:
@@ -77,9 +96,9 @@ jobs:
     - name: Build
       run: |
         pip install pyinstaller
-        pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." calc_paper_gui.py
-        # onefile 模式生成的是单个可执行文件，不是 .app bundle
-        # 创建 DMG 包含可执行文件
+        pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." main.py
+        # onefile mode generates a single executable, not a .app bundle
+        # Create DMG containing the executable
         mkdir dmg_temp
         cp dist/CalcPaper dmg_temp/
         hdiutil create -volname "CalcPaper" -srcfolder dmg_temp -ov -format UDZO CalcPaper.dmg
@@ -102,7 +121,7 @@ jobs:
     - name: Build
       run: |
         pip install pyinstaller
-        pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." calc_paper_gui.py
+        pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." main.py
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v1
       with:
