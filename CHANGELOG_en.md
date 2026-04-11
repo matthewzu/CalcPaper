@@ -2,6 +2,28 @@
 
 # Changelog
 
+## [2.1] - 2026-04-11
+
+### Added
+- 📆 **workday() Working Day Calculation**:
+  - Syntax: `workday(start_date, working_days[, extra_holidays])`
+  - Auto-skip weekends, comments list skipped holidays
+  - Extra holidays separated by `/`, `+` to add (optional), `-` to remove
+  - Example: `workday(Y20260411, 10, Y20260501/-Y20260412)`
+- 📝 **Smart Date/Time Comments**:
+  - Date result comments auto-show: YYYY-MM-DD WXX Weekday
+  - Time result comments auto-show: HH:MM:SS
+  - Date difference auto-convert to: Xy Xmo Xw Xd
+  - Time difference auto-convert to: Xh Xm Xs
+- 🔗 **hex() supports nested function calls**: e.g. `hex(swap(x))`
+
+### Fixed
+- 🛠️ Fix GUI Ctrl+Enter inserting newline while calculating
+
+### Improved
+- 📖 All examples and help text updated with swap/workday/hex(swap()) usage
+- 📚 Updated all documentation
+
 ## [2.0] - 2026-04-11
 
 ### Added

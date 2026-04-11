@@ -33,12 +33,22 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
-          ### 🆕 New in v2.0 / v2.0 新功能
+          ### 🆕 New in v2.1 / v2.1 新功能
+          - 📆 workday() working day calculation / 工作日计算函数
+            - Auto-skip weekends / 自动跳过周末
+            - Custom holidays: `workday(Y20260411, 10, Y20260501/-Y20260412)`
+          - 📝 Smart date/time comments / 智能日期时间注释
+            - Date: 2026年4月11日 第15周星期六 / 2026-04-11 W15 Sat
+            - Time: 9时30分 / 09:30:00
+            - Duration: 3月1周2天 / 3mo1w2d, 8小时30分钟 / 8h30m
+          - 🔗 hex(swap()) nested function support / 嵌套函数支持
+          - 🛠️ Fix Ctrl+Enter inserting newline in GUI / 修复 Ctrl+Enter 换行问题
+
+          ### 🆕 From v2.0 / v2.0 功能
           - 📅 Date & time arithmetic / 日期时间加减运算 (Y/T/M/W/D/h/m/s)
           - ✏️ Variable name autocomplete / 变量名自动补全
           - 🔄 Auto update check on startup / 启动时自动检查更新
           - 🖥️ Packaged exe supports CLI mode / 打包程序支持 CLI 模式
-          - 📦 Unified version management / 版本号统一管理
 
           ### ✅ All Features / 全部功能
           - 🧮 Variable references / 变量引用
@@ -46,8 +56,9 @@ jobs:
           - ⚡ Bitwise operations / 位运算 (<<, >>, &, |, ^, ~)
           - 📊 bitmap() bit visualization / 位结构可视化
           - 🔀 swap() byte order swap / 字节序交换
-          - 🔢 hex() hex display / 16进制显示
+          - 🔢 hex() hex display / 16进制显示 (supports nesting / 支持嵌套)
           - 📅 Date & time arithmetic / 日期时间运算
+          - 📆 workday() working day calculation / 工作日计算
           - 💯 Percentage calculation / 百分数计算
           - ✏️ Variable autocomplete / 变量自动补全
           - 🔄 Auto update check / 自动检查更新
