@@ -1,7 +1,7 @@
 # CalcPaper 中英文示例 / Language Demo
 
 # 中文示例 / Chinese Example
-# 使用中文运行: python calc_paper.py --lang zh
+# 使用中文运行: python main.py --cli --lang zh
 
 # 基本计算
 工资 = 8000
@@ -14,28 +14,16 @@
 红色 = (颜色 >> 16) & 0xFF
 绿色 = (颜色 >> 8) & 0xFF
 蓝色 = 颜色 & 0xFF
+bitmap(颜色, 1)
 
-# 字节序显示
-endian: big
-bitmap 查看颜色 = 颜色
+# 字节序交换
+网络数据 = 0x12345678
+本地数据 = swap(网络数据)
 
----
+# 日期/时间运算
+today = Y20260411
+deadline = today + D10
+diff = Y20260411 - Y20260101
 
-# English Example
-# Run with English: python calc_paper.py --lang en
-
-# Basic calculation
-salary = 8000
-rent = 2000
-food = 30 * 25
-balance = salary - rent - food
-
-# Bitwise operations
-color = 0xFF8040
-red = (color >> 16) & 0xFF
-green = (color >> 8) & 0xFF
-blue = color & 0xFF
-
-# Endianness display
-endian: big
-bitmap view_color = color
+# 工作日计算
+交付日 = workday(Y20260411, 10)

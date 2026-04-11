@@ -81,6 +81,7 @@ python main.py --version
 - 🔀 **swap() Byte Order Swap** - Network to host byte order conversion
 - 🔢 **hex() Hex Display** - Display hexadecimal representation of values
 - 📅 🆕 **Date/Time Arithmetic** - Date durations (Y/T/M/W/D) and time durations (h/m/s)
+- 📆 🆕 **workday() Working Day Calculation** - Count working days with custom holidays
 - ✏️ 🆕 **Variable Name Autocomplete** - Auto-suggest popup when typing variable names in GUI
 - 🔄 🆕 **Auto Update Check on Startup** - Background check for latest GitHub release
 - 🖥️ 🆕 **GUI + CLI Dual-mode Packaging** - Single executable supports both graphical and command-line interface
@@ -105,6 +106,21 @@ Calculate dates and times directly in your expressions using intuitive literal s
 - Time durations (lowercase): `hxx` (hours), `mxx` (minutes), `sxx` (seconds)
 
 Operations: date ± duration → date, date - date → days, time ± duration → time, time - time → seconds.
+
+Comments auto-show human-readable format: dates show "YYYY年M月D日 第XX周星期X", times show "X时X分X秒", date differences show "X年X月X周X天", time differences show "X小时X分钟X秒".
+
+#### workday() Working Day Calculation 🆕
+
+Calculate the date after a given number of working days, auto-skipping weekends:
+
+```python
+deadline = workday(Y20260411, 10)                    # 10 working days
+deadline2 = workday(Y20260411, 20, Y20260501)        # add May Day as holiday
+deadline3 = workday(Y20260411, 10, -Y20260412)       # remove weekend
+deadline4 = workday(Y20260411, 15, Y20260501/-Y20260412)  # combined
+```
+
+Extra holidays: `Y20260501` (add), `-Y20260412` (remove), separated by `/`.
 
 #### Variable Name Autocomplete
 
@@ -158,17 +174,20 @@ bitmap(color, 1)
 #### Date/Time Arithmetic 🆕
 
 ```python
-# Date arithmetic
+# Date arithmetic (comments auto-show date and weekday)
 today = Y20260410
-deadline = today + D10      # Y20260420
+deadline = today + D10      # Y20260420  # 2026年4月20日 第17周星期一
 next_month = today + M1     # Y20260510
-diff = Y20260410 - Y20260101  # 99 (days)
+diff = Y20260410 - Y20260101  # 99  # 3月1周2天
 
-# Time arithmetic
+# Time arithmetic (comments auto-show hours/minutes/seconds)
 start = T090000
 end = T173000
-duration = end - start      # 30600 (seconds)
-lunch = start + h3 + m30    # T123000
+duration = end - start      # 30600  # 8小时30分钟
+lunch = start + h3 + m30    # T123000  # 12时30分
+
+# Workday calculation
+deadline = workday(Y20260411, 10)  # auto-skip weekends
 ```
 
 #### Network Programming
@@ -216,11 +235,23 @@ swap(0x12345678)  # 0x78563412
 
 #### hex()
 
-Hexadecimal display function.
+Hexadecimal display function. Supports nested function calls.
 
 ```python
 hex(255)    # 0xFF
 hex(65535)  # 0xFFFF
+hex(swap(0x12345678))  # 0x78563412
+```
+
+#### workday()
+
+Working day calculation function. Counts working days from a start date, skipping weekends by default.
+
+```python
+workday(Y20260411, 10)                     # 10 working days from date
+workday(Y20260411, 20, Y20260501)          # add extra holiday
+workday(Y20260411, 10, -Y20260412)         # remove weekend day
+workday(Y20260411, 15, Y20260501/-Y20260412)  # combined
 ```
 
 ### 🔒 Reserved Keywords
@@ -357,6 +388,7 @@ python main.py --version
 - 🔀 **swap() 字节序交换** - 网络字节序与本地字节序转换
 - 🔢 **hex() 16进制显示** - 显示数值的16进制表示
 - 📅 🆕 **日期/时间加减运算** - 支持日期时长（Y/T/M/W/D）和时间时长（h/m/s）
+- 📆 🆕 **workday() 工作日计算** - 计算工作日，支持自定义节假日
 - ✏️ 🆕 **变量名自动补全** - GUI 中输入变量名时自动弹出候选列表
 - 🔄 🆕 **启动时自动检查更新** - 后台检查 GitHub 最新版本
 - 🖥️ 🆕 **GUI + CLI 双模式打包** - 一个可执行文件同时支持图形界面和命令行
@@ -381,6 +413,21 @@ python main.py --version
 - 时间时长（小写）：`hxx`（小时）、`mxx`（分钟）、`sxx`（秒）
 
 运算规则：日期 ± 时长 → 日期，日期 - 日期 → 天数，时间 ± 时长 → 时间，时间 - 时间 → 秒数。
+
+注释自动显示人类可读格式：日期显示"X年X月X日 第XX周星期X"，时间显示"X时X分X秒"，日期差显示"X年X月X周X天"，时间差显示"X小时X分钟X秒"。
+
+#### workday() 工作日计算 🆕
+
+计算从指定日期起若干工作日后的日期，自动跳过周末：
+
+```python
+deadline = workday(Y20260411, 10)                    # 10个工作日
+deadline2 = workday(Y20260411, 20, Y20260501)        # 添加五一为节假日
+deadline3 = workday(Y20260411, 10, -Y20260412)       # 移除周末
+deadline4 = workday(Y20260411, 15, Y20260501/-Y20260412)  # 组合
+```
+
+额外节假日：`Y20260501`（添加）、`-Y20260412`（移除），用 `/` 分隔。
 
 #### 变量名自动补全
 
@@ -434,17 +481,20 @@ bitmap(颜色, 1)
 #### 日期/时间运算 🆕
 
 ```python
-# 日期运算
+# 日期运算（注释自动显示年月日和星期）
 today = Y20260410
-deadline = today + D10      # Y20260420
+deadline = today + D10      # Y20260420  # 2026年4月20日 第17周星期一
 next_month = today + M1     # Y20260510
-diff = Y20260410 - Y20260101  # 99 (天)
+diff = Y20260410 - Y20260101  # 99  # 3月1周2天
 
-# 时间运算
+# 时间运算（注释自动显示时分秒）
 start = T090000
 end = T173000
-duration = end - start      # 30600 (秒)
-lunch = start + h3 + m30    # T123000
+duration = end - start      # 30600  # 8小时30分钟
+lunch = start + h3 + m30    # T123000  # 12时30分
+
+# 工作日计算
+deadline = workday(Y20260411, 10)  # 自动跳过周末
 ```
 
 #### 网络编程
@@ -492,11 +542,23 @@ swap(0x12345678)  # 0x78563412
 
 #### hex()
 
-16进制显示函数。
+16进制显示函数。支持嵌套函数调用。
 
 ```python
 hex(255)    # 0xFF
 hex(65535)  # 0xFFFF
+hex(swap(0x12345678))  # 0x78563412
+```
+
+#### workday()
+
+工作日计算函数。从指定日期起计算若干工作日后的日期，默认跳过周末。
+
+```python
+workday(Y20260411, 10)                     # 10个工作日后
+workday(Y20260411, 20, Y20260501)          # 添加额外节假日
+workday(Y20260411, 10, -Y20260412)         # 移除周末
+workday(Y20260411, 15, Y20260501/-Y20260412)  # 组合
 ```
 
 ### 🔒 保留关键字说明

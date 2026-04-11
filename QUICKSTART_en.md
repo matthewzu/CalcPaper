@@ -166,6 +166,36 @@ discount_amount = original_price * discount_rate
 final_price = original_price - discount_amount
 ```
 
+### Date/Time Arithmetic Example
+
+```python
+# Date operations (comments auto-show date and weekday)
+today = Y20260410
+deadline = today + D10
+diff = Y20260410 - Y20260101
+
+# Time operations (comments auto-show hours/minutes/seconds)
+start = T090000
+end = T173000
+duration = end - start
+```
+
+### Workday Calculation Example
+
+```python
+# 10 working days later (auto-skip weekends)
+deadline = workday(Y20260411, 10)
+
+# Add extra holiday (May Day)
+deadline2 = workday(Y20260411, 20, Y20260501)
+
+# Remove weekend (make Saturday a workday)
+deadline3 = workday(Y20260411, 10, -Y20260412)
+
+# Combined: add holiday + remove weekend
+deadline4 = workday(Y20260411, 15, Y20260501/-Y20260412)
+```
+
 ## Next Steps
 
 1. Read the [complete User Guide](docs/User-Guide.md)

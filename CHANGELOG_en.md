@@ -2,6 +2,27 @@
 
 # Changelog
 
+## [2.0] - 2026-04-11
+
+### Added
+- 📅 **Date/Time Arithmetic**:
+  - Date literals `Yyyyymmdd`, time literals `Thhmmss`
+  - Date durations (uppercase): `Mxx` (months), `Wxx` (weeks), `Dxx` (days)
+  - Time durations (lowercase): `hxx` (hours), `mxx` (minutes), `sxx` (seconds)
+  - Date result comments auto-show: YYYY-MM-DD WXX Weekday
+  - Time result comments auto-show: HH:MM:SS
+  - Date difference comments auto-convert to: Xy Xmo Xw Xd
+  - Time difference comments auto-convert to: Xh Xm Xs
+- 📆 **workday() Working Day Calculation**:
+  - Syntax: `workday(start_date, working_days[, extra_holidays])`
+  - Auto-skip weekends, comments list skipped holidays
+  - Extra holidays separated by `/`, `+` to add (optional), `-` to remove
+  - Example: `workday(Y20260411, 10, Y20260501/-Y20260412)`
+- ✏️ **Variable Name Autocomplete**: Auto-suggest popup in GUI
+- 🔄 **Auto Update Check on Startup**: Background check for latest GitHub release
+- 🖥️ **GUI + CLI Dual-mode Packaging**: Unified entry `main.py`
+- 📦 **Unified Version Management**: `version.py` as single source
+
 ## [1.2] - 2026-03-13
 
 ### Added

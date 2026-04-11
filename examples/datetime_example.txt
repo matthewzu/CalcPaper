@@ -21,3 +21,20 @@ dev_phase = design_phase + M1
 test_phase = dev_phase + W2
 launch = test_phase + D3
 total_days = launch - project_start
+
+# Workday calculations
+# Basic: 10 working days from Apr 11
+deadline1 = workday(Y20260411, 10)
+
+# Add May 1 as extra holiday
+deadline2 = workday(Y20260411, 20, Y20260501)
+
+# Remove a weekend day (make it a workday)
+deadline3 = workday(Y20260411, 10, -Y20260412)
+
+# Combined: add holiday + remove weekend
+deadline4 = workday(Y20260411, 15, Y20260501/-Y20260412)
+
+# Use variable as start date
+start_date = Y20260411
+deadline5 = workday(start_date, 5)

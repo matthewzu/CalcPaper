@@ -169,6 +169,62 @@ bitmap view_a = a           = 255 (0xFF, 0b11111111)
     |1 1 1 1 |1 1 1 1 |
 ```
 
+### 6. Date/Time Arithmetic
+
+Calculate dates and times directly in expressions. Comments auto-show human-readable format:
+
+```python
+# Date operations (comments auto-show: YYYY-MM-DD WXX Weekday)
+today = Y20260410           # = Y20260410  # 2026-04-10 W15 Fri
+deadline = today + D10      # = Y20260420  # 2026-04-20 W17 Mon
+next_month = today + M1     # = Y20260510  # 2026-05-10 W19 Sun
+
+# Date difference (auto-converts to years/months/weeks/days)
+diff = Y20260410 - Y20260101  # = 99  # 3mo1w2d
+
+# Time operations (comments auto-show: HH:MM:SS)
+start = T090000             # = T090000  # 09:00:00
+end = T173000               # = T173000  # 17:30:00
+duration = end - start      # = 30600  # 8h30m
+lunch = start + h3 + m30    # = T123000  # 12:30:00
+```
+
+Literal formats:
+- Date: `Yyyyymmdd` (e.g., `Y20260410` = April 10, 2026)
+- Time: `Thhmmss` (e.g., `T143000` = 14:30:00)
+- Date durations (uppercase): `Mxx` (months), `Wxx` (weeks), `Dxx` (days)
+- Time durations (lowercase): `hxx` (hours), `mxx` (minutes), `sxx` (seconds)
+
+### 7. workday() Working Day Calculation
+
+Calculate the date after a given number of working days, auto-skipping holidays (weekends by default):
+
+```python
+# Basic: 10 working days later
+deadline = workday(Y20260411, 10)
+# = Y20260424  # 2026-04-24 W17 Fri, skipped: Y20260412, Y20260418, Y20260419
+
+# Add extra holiday (+ prefix optional)
+deadline2 = workday(Y20260411, 20, Y20260501)
+
+# Remove default holiday (make weekend a workday)
+deadline3 = workday(Y20260411, 10, -Y20260412)
+
+# Combined: add holiday + remove weekend, separated by /
+deadline4 = workday(Y20260411, 15, Y20260501/-Y20260412)
+
+# Use variable as start date
+start = Y20260411
+deadline5 = workday(start, 5)
+```
+
+Syntax: `workday(start_date, working_days[, extra_holidays])`
+
+Extra holidays format:
+- `Y20260501` or `+Y20260501`: Add as holiday
+- `-Y20260412`: Remove from default holidays (make it a workday)
+- Multiple entries separated by `/`: `Y20260501/-Y20260412`
+
 ## GUI Usage
 
 ### Interface Layout

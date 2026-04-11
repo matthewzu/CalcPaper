@@ -747,19 +747,35 @@ class CalculatorGUIAdvanced:
         }
 
         self._bound_keys = []
+        # Track which keys are "calculate" actions that need newline suppression
+        calc_keys = set()
         for action_name, key_str in sc.items():
             if key_str and action_name in actions:
                 try:
                     self.root.bind(key_str, actions[action_name])
                     self._bound_keys.append(key_str)
+                    if action_name in ('calculate', 'calculate_alt'):
+                        calc_keys.add(key_str)
                     # Also bind uppercase version
                     if 'Control-' in key_str and len(key_str.split('-')[-1].rstrip('>')) == 1:
                         upper_key = key_str[:-2] + key_str[-2].upper() + key_str[-1]
                         if upper_key != key_str:
                             self.root.bind(upper_key, actions[action_name])
                             self._bound_keys.append(upper_key)
+                            if action_name in ('calculate', 'calculate_alt'):
+                                calc_keys.add(upper_key)
                 except Exception:
                     pass
+
+        # Bind calculate shortcuts on input_text to suppress newline insertion
+        def _calc_and_break(e):
+            self.calculate()
+            return "break"
+        for key_str in calc_keys:
+            try:
+                self.input_text.bind(key_str, _calc_and_break)
+            except Exception:
+                pass
 
     def _unbind_all_shortcuts(self):
         """Unbind all bound shortcuts"""
@@ -1008,6 +1024,13 @@ blue = color & 0xFF
 # View bit structure with bitmap (big endian)
 bitmap(color, 1)
 
+# swap: byte order conversion
+net_data = 0x12345678
+host_data = swap(net_data)
+
+# hex + swap combined
+hex(swap(net_data))
+
 # hex function
 hex(255)
 hex(color)
@@ -1023,6 +1046,10 @@ start = T090000
 end = T173000
 duration = end - start
 lunch = start + h3 + m30
+
+# Workday calculation (auto-skip weekends)
+wd = workday(Y20260411, 10)
+wd2 = workday(Y20260411, 10, Y20260501/-Y20260412)
 
 # Percentage calculation
 price = 100
@@ -1050,6 +1077,13 @@ b = 0x1234
 # 使用bitmap查看位结构（大端字节序）
 bitmap(颜色, 1)
 
+# swap: 字节序转换
+网络数据 = 0x12345678
+本地数据 = swap(网络数据)
+
+# hex + swap 组合使用
+hex(swap(网络数据))
+
 # hex 函数
 hex(255)
 hex(颜色)
@@ -1065,6 +1099,10 @@ hex(颜色)
 下班 = T173000
 工时 = 下班 - 上班
 午餐 = 上班 + h3 + m30
+
+# 工作日计算（自动跳过周末）
+交付日 = workday(Y20260411, 10)
+交付日2 = workday(Y20260411, 10, Y20260501/-Y20260412)
 
 # 百分数计算
 价格 = 100
@@ -1421,6 +1459,21 @@ hex(颜色)
     time - duration  ->  time       T143000 - m30 = T140000
     time - time      ->  seconds    T173000 - T090000 = 30600
 
+=== workday() Working Day Calculation (NEW in v2.0) ===
+  workday(start, days)              Count working days (skip weekends)
+  workday(start, days, holidays)    With custom holidays
+
+  Holiday format (separated by /):
+    Y20260501                       Add as holiday (+ optional)
+    -Y20260412                      Remove from holidays (make workday)
+    Y20260501/-Y20260412            Combined
+
+  Example:
+    workday(Y20260411, 10)                          10 working days
+    workday(Y20260411, 20, Y20260501)               add May Day
+    workday(Y20260411, 10, -Y20260412)              remove weekend
+    workday(Y20260411, 15, Y20260501/-Y20260412)    combined
+
 === Reserved Keywords ===
   Y, T, M, W, D (uppercase) and h, m, s (lowercase) followed by
   digits are reserved and cannot be used as variable names.
@@ -1503,6 +1556,21 @@ hex(颜色)
     时间 + 时长  ->  时间       T090000 + h3 + m30 = T123000
     时间 - 时长  ->  时间       T143000 - m30 = T140000
     时间 - 时间  ->  秒数       T173000 - T090000 = 30600
+
+=== workday() 工作日计算（v2.0 新增）===
+  workday(起始日期, 天数)           计算工作日（自动跳过周末）
+  workday(起始日期, 天数, 节假日)   自定义节假日
+
+  节假日格式（用 / 分隔）：
+    Y20260501                       添加为节假日（+号可省略）
+    -Y20260412                      移除节假日（变为工作日）
+    Y20260501/-Y20260412            组合使用
+
+  示例：
+    workday(Y20260411, 10)                          10个工作日
+    workday(Y20260411, 20, Y20260501)               添加五一
+    workday(Y20260411, 10, -Y20260412)              移除周末
+    workday(Y20260411, 15, Y20260501/-Y20260412)    组合
 
 === 保留关键字 ===
   Y、T、M、W、D（大写）和 h、m、s（小写）后跟数字

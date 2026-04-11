@@ -117,7 +117,7 @@ class CalculatorPaperAdvanced:
         bitmap_endian = None
         bitmap_width = None
 
-        hex_pattern = r'^hex\s*\(\s*(.+?)\s*\)$'
+        hex_pattern = r'^hex\s*\(\s*(.+)\s*\)$'
         hex_func_match = re.match(hex_pattern, line, re.IGNORECASE)
 
         # Support nested parentheses, e.g. bitmap(swap(x), 1)
@@ -178,6 +178,30 @@ class CalculatorPaperAdvanced:
             err_msg = "变量名与保留关键字冲突" if self.language == 'zh' else "Variable name conflicts with reserved keyword"
             return None, None, f"错误: {err_msg}", None, False, None
 
+        # Check for workday() function call
+        workday_args = self._parse_workday_call(line)
+        if workday_args is not None and not use_bitmap and not use_hex_func:
+            try:
+                start_date, num_days, extra_holidays = workday_args
+                result_date, holidays_skipped = self._evaluate_workday(start_date, num_days, extra_holidays)
+                # Build comment with skipped holidays
+                comment = None
+                if holidays_skipped:
+                    if self.language == 'zh':
+                        holiday_strs = [self._format_date_result(h) for h in holidays_skipped]
+                        comment = "跳过: " + ", ".join(holiday_strs)
+                    else:
+                        holiday_strs = [self._format_date_result(h) for h in holidays_skipped]
+                        comment = "skipped: " + ", ".join(holiday_strs)
+                # Result is Dxx (total calendar days from start)
+                total_days = abs((result_date - start_date).days)
+                result = result_date
+                if label:
+                    self.variables[label] = result
+                return result, label, comment, None, False, None
+            except Exception as e:
+                return None, label, f"错误: {str(e)}", None, False, None
+
         # Detect if expression contains date/time/duration literals
         date_time_pattern = r'(?:^|(?<=[\s+\-]))(?:Y\d{8}|T\d{6}|[MWD]\d+|[hms]\d+)(?:$|(?=[\s+\-]))'
         has_date_time = bool(re.search(r'Y\d{8}|T\d{6}|(?<![a-zA-Z0-9_\u4e00-\u9fa5])[MWD]\d+(?![a-zA-Z0-9_\u4e00-\u9fa5])|(?<![a-zA-Z0-9_\u4e00-\u9fa5])[hms]\d+(?![a-zA-Z0-9_\u4e00-\u9fa5])', line))
@@ -188,7 +212,7 @@ class CalculatorPaperAdvanced:
             var_pattern = r'\b([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\b'
             for m in re.finditer(var_pattern, line):
                 var_name = m.group(1)
-                if var_name.lower() not in ['swap', 'bitmap', 'hex'] and var_name in self.variables:
+                if var_name.lower() not in ['swap', 'bitmap', 'hex', 'workday'] and var_name in self.variables:
                     val = self.variables[var_name]
                     if isinstance(val, (datetime.date, datetime.time)):
                         has_date_time = True
@@ -201,7 +225,22 @@ class CalculatorPaperAdvanced:
                 # Save variable
                 if label:
                     self.variables[label] = result
-                return result, label, None, None, False, None
+                # Generate human-readable duration comment for date/time differences
+                comment = None
+                if isinstance(result, (int, float)) and not isinstance(result, bool):
+                    # Check if this is a time subtraction (result in seconds) or date subtraction (result in days)
+                    # Heuristic: if expression involves time literals/variables, it's seconds
+                    is_time_diff = bool(re.search(r'T\d{6}', line))
+                    if not is_time_diff:
+                        # Check variables for time values
+                        var_pattern = r'\b([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\b'
+                        for m_var in re.finditer(var_pattern, line):
+                            vn = m_var.group(1)
+                            if vn in self.variables and isinstance(self.variables[vn], datetime.time):
+                                is_time_diff = True
+                                break
+                    comment = self._format_duration_comment(result, is_time=is_time_diff)
+                return result, label, comment, None, False, None
             except Exception as e:
                 return None, label, f"错误: {str(e)}", None, False, None
 
@@ -502,10 +541,65 @@ class CalculatorPaperAdvanced:
             return f"T{result.hour:02d}{result.minute:02d}{result.second:02d}"
         return str(result)
 
+    def _format_duration_comment(self, value, is_time=False):
+        """Convert integer days or seconds into human-readable duration comment.
+        For days: converts to years, months, weeks, days.
+        For seconds (is_time=True): converts to hours, minutes, seconds."""
+        if not isinstance(value, (int, float)):
+            return None
+        value = int(value)
+        if is_time:
+            # Time difference in seconds
+            negative = value < 0
+            total = abs(value)
+            hours = total // 3600
+            minutes = (total % 3600) // 60
+            secs = total % 60
+            parts = []
+            if self.language == 'zh':
+                if hours: parts.append(f"{hours}小时")
+                if minutes: parts.append(f"{minutes}分钟")
+                if secs: parts.append(f"{secs}秒")
+            else:
+                if hours: parts.append(f"{hours}h")
+                if minutes: parts.append(f"{minutes}m")
+                if secs: parts.append(f"{secs}s")
+            if not parts:
+                return "0秒" if self.language == 'zh' else "0s"
+            result = ''.join(parts)
+            return f"-{result}" if negative else result
+        else:
+            # Date difference in days
+            negative = value < 0
+            total = abs(value)
+            years = total // 365
+            remaining = total % 365
+            months = remaining // 30
+            remaining = remaining % 30
+            weeks = remaining // 7
+            days = remaining % 7
+            parts = []
+            if self.language == 'zh':
+                if years: parts.append(f"{years}年")
+                if months: parts.append(f"{months}月")
+                if weeks: parts.append(f"{weeks}周")
+                if days: parts.append(f"{days}天")
+            else:
+                if years: parts.append(f"{years}y")
+                if months: parts.append(f"{months}mo")
+                if weeks: parts.append(f"{weeks}w")
+                if days: parts.append(f"{days}d")
+            if not parts:
+                return "0天" if self.language == 'zh' else "0d"
+            result = ''.join(parts)
+            return f"-{result}" if negative else result
+
     def _is_reserved_keyword(self, name):
-        """Check if identifier is a reserved keyword (Y/T/M/W/D/h/m/s followed by digits)"""
+        """Check if identifier is a reserved keyword (Y/T/M/W/D/h/m/s followed by digits, or function names)"""
         if not isinstance(name, str):
             return False
+        if name.lower() in ('workday',):
+            return True
         return bool(re.match(r'^[YTMWDhms]\d+$', name))
 
     def _evaluate_date_expr(self, left, op, right):
@@ -679,6 +773,107 @@ class CalculatorPaperAdvanced:
             i += 2
         
         return result
+
+    def _evaluate_workday(self, start_date, num_days, extra_holidays_str=None):
+        """Evaluate workday function: count num_days working days from start_date.
+        
+        Returns (result_date, holidays_in_range) where holidays_in_range is a list
+        of holiday dates that were skipped.
+        
+        extra_holidays_str format: "+Y20260501/-Y20260503" 
+          '+' adds to default holidays (weekends), '-' removes from default holidays
+        """
+        # Parse extra holidays modifications
+        add_holidays = set()
+        remove_holidays = set()
+        if extra_holidays_str:
+            # Split by '/' separator first, then process each entry
+            entries = extra_holidays_str.strip().split('/')
+            for entry in entries:
+                entry = entry.strip()
+                if not entry:
+                    continue
+                if entry.startswith('+'):
+                    date_str = entry[1:]
+                    d = self._parse_date_literal(date_str)
+                    if d is None:
+                        raise ValueError(f"无法解析日期: {date_str}" if self.language == 'zh' else f"Cannot parse date: {date_str}")
+                    add_holidays.add(d)
+                elif entry.startswith('-'):
+                    date_str = entry[1:]
+                    d = self._parse_date_literal(date_str)
+                    if d is None:
+                        raise ValueError(f"无法解析日期: {date_str}" if self.language == 'zh' else f"Cannot parse date: {date_str}")
+                    remove_holidays.add(d)
+                else:
+                    # No prefix, treat as add
+                    d = self._parse_date_literal(entry)
+                    if d is None:
+                        raise ValueError(f"无法解析日期: {entry}" if self.language == 'zh' else f"Cannot parse date: {entry}")
+                    add_holidays.add(d)
+
+        def is_holiday(d):
+            """Check if a date is a holiday (weekend by default, modified by extra lists)"""
+            if d in remove_holidays:
+                return False
+            if d in add_holidays:
+                return True
+            return d.weekday() >= 5  # Saturday=5, Sunday=6
+
+        current = start_date
+        direction = 1 if num_days >= 0 else -1
+        remaining = abs(num_days)
+        holidays_skipped = []
+
+        while remaining > 0:
+            current += datetime.timedelta(days=direction)
+            if is_holiday(current):
+                holidays_skipped.append(current)
+            else:
+                remaining -= 1
+
+        return current, holidays_skipped
+
+    def _parse_workday_call(self, line):
+        """Parse workday(start, days[, extra_holidays]) function call.
+        Returns (start_date, num_days, extra_holidays_str) or None if not a workday call."""
+        # Match workday(...) with flexible inner content
+        match = re.match(r'^workday\s*\(\s*(.+)\s*\)$', line, re.IGNORECASE)
+        if not match:
+            return None
+        inner = match.group(1).strip()
+        
+        # Split by comma, but need to be careful with nested content
+        # Simple approach: split by ',' and handle 2 or 3 parts
+        parts = [p.strip() for p in inner.split(',')]
+        if len(parts) < 2 or len(parts) > 3:
+            return None
+        
+        # First param: start date (literal or variable)
+        start_token = parts[0].strip()
+        start_date = self._parse_date_literal(start_token)
+        if start_date is None:
+            # Try variable
+            if start_token in self.variables and isinstance(self.variables[start_token], datetime.date):
+                start_date = self.variables[start_token]
+            else:
+                return None
+        
+        # Second param: number of working days
+        try:
+            num_days = int(parts[1].strip())
+        except ValueError:
+            # Try variable
+            days_token = parts[1].strip()
+            if days_token in self.variables and isinstance(self.variables[days_token], (int, float)):
+                num_days = int(self.variables[days_token])
+            else:
+                return None
+        
+        # Third param (optional): extra holidays string
+        extra_holidays = parts[2].strip().strip('"').strip("'") if len(parts) == 3 else None
+        
+        return start_date, num_days, extra_holidays
 
     def _detect_input_bit_width(self, expr):
         """Detect bit width from input expression (based on leading zeros)
@@ -967,8 +1162,34 @@ class CalculatorPaperAdvanced:
                     result_str = hex_info
                 elif isinstance(result, datetime.date) and not isinstance(result, datetime.datetime):
                     result_str = self._format_date_result(result)
+                    # Add full date annotation: X年X月X日 周X
+                    weekday_names_zh = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+                    weekday_names_en = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                    if self.language == 'zh':
+                        week_num = result.isocalendar()[1]
+                        date_comment = f"{result.year}年{result.month}月{result.day}日 第{week_num}周{weekday_names_zh[result.weekday()]}"
+                    else:
+                        week_num = result.isocalendar()[1]
+                        date_comment = f"{result.year}-{result.month:02d}-{result.day:02d} W{week_num} {weekday_names_en[result.weekday()]}"
+                    if extra_info:
+                        extra_info = f"{date_comment}, {extra_info}"
+                    else:
+                        extra_info = date_comment
                 elif isinstance(result, datetime.time):
                     result_str = self._format_date_result(result)
+                    # Add full time annotation: X时X分X秒
+                    if self.language == 'zh':
+                        parts = []
+                        if result.hour: parts.append(f"{result.hour}时")
+                        if result.minute: parts.append(f"{result.minute}分")
+                        if result.second: parts.append(f"{result.second}秒")
+                        time_comment = ''.join(parts) if parts else '0时'
+                    else:
+                        time_comment = f"{result.hour:02d}:{result.minute:02d}:{result.second:02d}"
+                    if extra_info:
+                        extra_info = f"{time_comment}, {extra_info}"
+                    else:
+                        extra_info = time_comment
                 elif isinstance(result, int):
                     # Integer
                     if use_bitmap:
@@ -1036,6 +1257,14 @@ Examples (示例):
   # Note: bitmap() can only be used standalone (注意：bitmap()只能单独使用)
   # Cannot assign to variable or use in expressions (不能赋值或参与计算)
 
+  # swap function (swap字节序交换)
+  a = swap(0x12345678)   # Result: 0x78563412
+
+  # workday function (workday工作日计算)
+  deadline = workday(Y20260411, 10)                  # 10 working days
+  deadline2 = workday(Y20260411, 10, Y20260501)      # add holiday
+  deadline3 = workday(Y20260411, 10, -Y20260412)     # remove weekend
+
   # Percentage calculation (百分数计算)
   price = 100
   discount = 15%
@@ -1088,9 +1317,15 @@ Examples (示例):
         print("   - hex(value)         (Display as hexadecimal)")
         print("   - Note: Can only be used standalone")
         print("   - Example: hex(255)  # Result: 0xFF")
-        print("10. Lines starting with # are comments")
-        print("11. Type 'exit' or 'quit' to exit")
-        print("12. Type 'calc' to start calculation")
+        print("10. workday function:")
+        print("   - workday(start, days)            (Count working days)")
+        print("   - workday(start, days, holidays)   (With custom holidays)")
+        print("   - Holidays: Y20260501 (add), -Y20260412 (remove), / to separate")
+        print("   - Example: workday(Y20260411, 10)")
+        print("   - Example: workday(Y20260411, 10, Y20260501/-Y20260412)")
+        print("11. Lines starting with # are comments")
+        print("12. Type 'exit' or 'quit' to exit")
+        print("13. Type 'calc' to start calculation")
         print("=" * 80)
         print()
 
@@ -1113,6 +1348,13 @@ or_result = a | b
 bitmap(and_result, 1)
 bitmap(or_result, 1)
 
+# swap: byte order conversion
+net_data = 0x12345678
+host_data = swap(net_data)
+
+# hex + swap combined
+hex(swap(net_data))
+
 # Date/time arithmetic
 today = Y20260410
 deadline = today + D10
@@ -1124,6 +1366,9 @@ start = T090000
 end = T173000
 duration = end - start
 lunch = start + h3 + m30
+
+# Workday calculation
+wd = workday(Y20260411, 10)
 """
 
         print("Example input:")
@@ -1171,9 +1416,15 @@ lunch = start + h3 + m30
         print("   - hex(数值)          (显示16进制)")
         print("   - 注意：只能单独使用")
         print("   - 示例: hex(255)  # 结果: 0xFF")
-        print("10. 以 # 开头的行为注释")
-        print("11. 输入 'exit' 或 'quit' 退出")
-        print("12. 输入 'calc' 开始计算")
+        print("10. workday 函数:")
+        print("   - workday(起始日期, 天数)           (计算工作日)")
+        print("   - workday(起始日期, 天数, 节假日)    (自定义节假日)")
+        print("   - 节假日: Y20260501(添加), -Y20260412(移除), /分隔")
+        print("   - 示例: workday(Y20260411, 10)")
+        print("   - 示例: workday(Y20260411, 10, Y20260501/-Y20260412)")
+        print("11. 以 # 开头的行为注释")
+        print("12. 输入 'exit' 或 'quit' 退出")
+        print("13. 输入 'calc' 开始计算")
         print("=" * 80)
         print()
 
@@ -1196,6 +1447,13 @@ bitmap(b)
 bitmap(与运算, 1)
 bitmap(或运算, 1)
 
+# swap: 字节序转换
+网络数据 = 0x12345678
+本地数据 = swap(网络数据)
+
+# hex + swap 组合使用
+hex(swap(网络数据))
+
 # 日期运算
 今天 = Y20260410
 截止日 = 今天 + D10
@@ -1207,6 +1465,9 @@ bitmap(或运算, 1)
 下班 = T173000
 工时 = 下班 - 上班
 午餐 = 上班 + h3 + m30
+
+# 工作日计算
+交付日 = workday(Y20260411, 10)
 """
 
         print("示例输入:")
