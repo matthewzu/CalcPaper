@@ -2,6 +2,13 @@
 
 # Changelog
 
+## [2.2] - 2026-04-13
+
+### Added
+- 📁 **User Data Directory**: Config and session files now stored in `~/.calcpaper` (e.g., `C:\Users\Username\.calcpaper` on Windows) instead of the executable directory
+- 🔄 **Auto Online Update**: When a new version is detected, user can confirm to auto-download and replace the current executable; restart to apply
+- 📦 Auto-migration of config and session files from old location (executable directory) to new user data directory
+
 ## [2.1] - 2026-04-11
 
 ### Added

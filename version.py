@@ -1,2 +1,2 @@
 """CalcPaper version number - single source of truth"""
-VERSION = "2.1"
+VERSION = "2.2"

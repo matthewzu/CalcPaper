@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.1-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -21,7 +21,7 @@
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, date/time arithmetic, hexadecimal/binary numbers, byte order swapping, and more — making complex calculations as simple as writing on paper.
 
-Version: 2.1
+Version: 2.2
 
 ### 🚀 Quick Start
 
@@ -83,7 +83,8 @@ python main.py --version
 - 📅 🆕 **Date/Time Arithmetic** - Date durations (Y/T/M/W/D) and time durations (h/m/s)
 - 📆 🆕 **workday() Working Day Calculation** - Count working days with custom holidays
 - ✏️ 🆕 **Variable Name Autocomplete** - Auto-suggest popup when typing variable names in GUI
-- 🔄 🆕 **Auto Update Check on Startup** - Background check for latest GitHub release
+- 🔄 🆕 **Auto Update Check on Startup** - Background check for latest GitHub release, auto-download and replace executable
+- 📁 🆕 **User Data Directory** - Config and session stored in `~/.calcpaper` (auto-migrated from old location)
 - 🖥️ 🆕 **GUI + CLI Dual-mode Packaging** - Single executable supports both graphical and command-line interface
 - 💯 **Percentage Calculation** - Direct use of 6.5%, 10%, etc.
 - 💾 **Session Auto-restore** - Auto save and restore content from last session
@@ -128,7 +129,7 @@ In the GUI, start typing a previously defined variable name and an autocomplete 
 
 #### Auto Update Check
 
-On GUI startup, CalcPaper checks GitHub Releases in the background. If a newer version is found, a clickable notification appears in the status bar.
+On GUI startup, CalcPaper checks GitHub Releases in the background. If a newer version is found, a dialog prompts you to confirm the update. After confirmation, the new executable is downloaded and replaces the current one automatically. Restart to apply the update.
 
 #### GUI + CLI Dual-mode
 
@@ -328,7 +329,7 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、日期/时间运算、16进制/2进制数值、字节序转换等功能，让复杂计算像在纸上写算式一样简单。
 
-版本：2.1
+版本：2.2
 
 ### 🚀 快速开始
 
@@ -390,7 +391,8 @@ python main.py --version
 - 📅 🆕 **日期/时间加减运算** - 支持日期时长（Y/T/M/W/D）和时间时长（h/m/s）
 - 📆 🆕 **workday() 工作日计算** - 计算工作日，支持自定义节假日
 - ✏️ 🆕 **变量名自动补全** - GUI 中输入变量名时自动弹出候选列表
-- 🔄 🆕 **启动时自动检查更新** - 后台检查 GitHub 最新版本
+- 🔄 🆕 **启动时自动检查更新** - 后台检查 GitHub 最新版本，确认后自动下载并替换可执行文件
+- 📁 🆕 **用户数据目录** - 配置和会话存储在 `~/.calcpaper`（自动从旧位置迁移）
 - 🖥️ 🆕 **GUI + CLI 双模式打包** - 一个可执行文件同时支持图形界面和命令行
 - 💯 **百分数计算** - 直接使用 6.5%、10% 等
 - 💾 **会话自动恢复** - 自动保存和恢复上次退出时的内容
@@ -435,7 +437,7 @@ deadline4 = workday(Y20260411, 15, Y20260501/-Y20260412)  # 组合
 
 #### 启动时自动检查更新
 
-GUI 启动时后台检查 GitHub Releases 最新版本。发现新版本时在状态栏显示可点击的下载提示。
+GUI 启动时后台检查 GitHub Releases 最新版本。发现新版本时弹出对话框询问是否更新，确认后自动下载并替换当前可执行文件，重启即可生效。
 
 #### GUI + CLI 双模式
 

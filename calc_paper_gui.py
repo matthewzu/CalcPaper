@@ -36,6 +36,8 @@ from version import VERSION
 
 # Config file path
 # Default is the executable directory; after PyInstaller packaging, it's the exe directory
+GITHUB_REPO = "matthewzu/CalcPaper"
+
 def _get_exe_dir():
     """Get the directory of the executable"""
     if getattr(sys, 'frozen', False):
@@ -43,7 +45,11 @@ def _get_exe_dir():
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
-DEFAULT_DATA_DIR = _get_exe_dir()
+def _get_user_data_dir():
+    """Get user data directory: ~/.calcpaper"""
+    return os.path.join(os.path.expanduser("~"), ".calcpaper")
+
+DEFAULT_DATA_DIR = _get_user_data_dir()
 BOOTSTRAP_CONFIG = os.path.join(DEFAULT_DATA_DIR, 'calcpaper_config.json')
 
 # Get resource file path (compatible with PyInstaller packaging)
@@ -107,12 +113,11 @@ def shortcut_display(key_str):
 
 class UpdateChecker:
     """Background update checker"""
-    GITHUB_API_URL = "https://api.github.com/repos/matthewzu/CalcPaper/releases/latest"
 
     def __init__(self, current_version, language, callback):
         self.current_version = current_version
         self.language = language
-        self.callback = callback  # callback(new_version, download_url)
+        self.callback = callback  # callback(new_version, download_url, asset_url)
 
     def check(self):
         """Execute check in background thread"""
@@ -121,28 +126,30 @@ class UpdateChecker:
 
     def _do_check(self):
         try:
-            result = self._fetch_latest_version()
-            if result:
-                new_version, download_url = result
-                if self._compare_versions(self.current_version, new_version):
-                    self.callback(new_version, download_url)
+            url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "CalcPaper",
+                "Accept": "application/vnd.github.v3+json",
+            })
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            tag = data.get("tag_name", "").lstrip("v")
+            if tag and self._compare_versions(self.current_version, tag):
+                # Find platform-specific asset URL
+                asset_url = None
+                platform = sys.platform
+                for asset in data.get("assets", []):
+                    name = asset.get("name", "").lower()
+                    if platform == "win32" and name.endswith(".exe"):
+                        asset_url = asset["browser_download_url"]
+                    elif platform == "darwin" and name.endswith(".dmg"):
+                        asset_url = asset["browser_download_url"]
+                    elif platform.startswith("linux") and not name.endswith((".exe", ".dmg")):
+                        asset_url = asset["browser_download_url"]
+                dl_url = data.get("html_url", f"https://github.com/{GITHUB_REPO}/releases")
+                self.callback(tag, dl_url, asset_url)
         except Exception:
             pass  # Silent ignore all errors
-
-    def _fetch_latest_version(self):
-        try:
-            req = urllib.request.Request(self.GITHUB_API_URL)
-            req.add_header('Accept', 'application/vnd.github.v3+json')
-            req.add_header('User-Agent', 'CalcPaper-UpdateChecker')
-            with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status != 200:
-                    return None
-                data = json.loads(response.read().decode('utf-8'))
-                tag_name = data.get('tag_name', '')
-                html_url = data.get('html_url', '')
-                return (tag_name, html_url)
-        except Exception:
-            return None
 
     @staticmethod
     def _compare_versions(current, remote):
@@ -305,8 +312,8 @@ class CalculatorGUIAdvanced:
     def load_config(self):
         """Load configuration file
         
-        First read config from default location (exe directory), which may contain user-defined data_dir.
-        Then use data_dir to determine actual paths for config and session files.
+        Data is stored in ~/.calcpaper by default.
+        Supports migration from old exe-directory layout.
         """
         defaults = {
             'language': 'en',
@@ -317,7 +324,22 @@ class CalculatorGUIAdvanced:
             'shortcuts': DEFAULT_SHORTCUTS.copy(),
         }
 
-        # Step 1: Read data_dir from bootstrap config
+        # Migration: if old config exists in exe dir, migrate to new location
+        exe_dir = _get_exe_dir()
+        old_config = os.path.join(exe_dir, 'calcpaper_config.json')
+        if old_config != BOOTSTRAP_CONFIG and os.path.exists(old_config) and not os.path.exists(BOOTSTRAP_CONFIG):
+            try:
+                os.makedirs(DEFAULT_DATA_DIR, exist_ok=True)
+                import shutil
+                shutil.copy2(old_config, BOOTSTRAP_CONFIG)
+                old_session = os.path.join(exe_dir, 'calcpaper_session.json')
+                new_session = os.path.join(DEFAULT_DATA_DIR, 'calcpaper_session.json')
+                if os.path.exists(old_session) and not os.path.exists(new_session):
+                    shutil.copy2(old_session, new_session)
+            except Exception:
+                pass
+
+        # Read config from default location
         config = defaults.copy()
         try:
             if os.path.exists(BOOTSTRAP_CONFIG):
@@ -336,7 +358,7 @@ class CalculatorGUIAdvanced:
         self.config_file = os.path.join(self.data_dir, 'calcpaper_config.json')
         self.session_file = os.path.join(self.data_dir, 'calcpaper_session.json')
 
-        # Step 2: If data_dir is not default, re-read full config from actual data_dir
+        # If data_dir differs from default, re-read full config from actual data_dir
         if self.config_file != BOOTSTRAP_CONFIG:
             try:
                 if os.path.exists(self.config_file):
@@ -459,35 +481,84 @@ class CalculatorGUIAdvanced:
 
     def _start_update_check(self):
         """Start background update check"""
-        def on_update_found(new_version, download_url):
+        def on_update_found(new_version, download_url, asset_url=None):
             # Schedule callback on main thread
-            self.root.after(0, lambda: self._show_update_notification(new_version, download_url))
+            self.root.after(0, lambda: self._show_update_notification(new_version, download_url, asset_url))
 
         checker = UpdateChecker(VERSION, self.language, on_update_found)
         checker.check()
 
-    def _show_update_notification(self, new_version, download_url):
-        """Show update notification"""
+    def _show_update_notification(self, new_version, download_url, asset_url=None):
+        """Show update notification and auto-download if asset available"""
         if self.language == 'en':
-            msg = f"New version {new_version} available!"
-            self.status_bar.config(text=f"🆕 {msg} Click here to download.")
+            msg = f"New version {new_version} available! Download now?"
         else:
-            msg = f"发现新版本 {new_version}！"
-            self.status_bar.config(text=f"🆕 {msg} 点击此处下载。")
+            msg = f"发现新版本 {new_version}！是否立即下载更新？"
 
-        # Make status bar clickable
-        self.status_bar.bind('<Button-1>', lambda e: webbrowser.open(download_url))
-        self.status_bar.config(cursor="hand2", fg="blue")
+        if not messagebox.askyesno(
+            "Update" if self.language == 'en' else "更新检查", msg):
+            return
 
-        # Reset after 30 seconds
-        def reset_status():
-            try:
-                self.status_bar.unbind('<Button-1>')
-                self.status_bar.config(cursor="", fg="black")
-                self.restore_normal_status()
-            except:
-                pass
-        self.root.after(30000, reset_status)
+        if asset_url:
+            # Auto-download in background
+            if self.language == 'en':
+                self.status_bar.config(text="⏳ Downloading update...")
+            else:
+                self.status_bar.config(text="⏳ 正在下载更新...")
+            self.root.update()
+            threading.Thread(target=lambda: self._download_update(asset_url, new_version), daemon=True).start()
+        else:
+            webbrowser.open(download_url)
+
+    def _download_update(self, asset_url, new_version):
+        """Download update and replace current executable."""
+        try:
+            req = urllib.request.Request(asset_url, headers={"User-Agent": "CalcPaper"})
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = resp.read()
+
+            # Determine current exe path
+            exe_path = sys.executable
+            if getattr(sys, 'frozen', False):
+                exe_path = sys.executable
+            else:
+                # Running from source — save to same directory
+                ext = ".exe" if sys.platform == "win32" else ""
+                exe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"CalcPaper{ext}")
+
+            # Write to temp file then replace
+            tmp_path = exe_path + ".new"
+            with open(tmp_path, "wb") as f:
+                f.write(data)
+
+            if sys.platform != "win32":
+                os.chmod(tmp_path, 0o755)
+
+            # On Windows, can't replace running exe directly — rename
+            if getattr(sys, 'frozen', False):
+                old_path = exe_path + ".old"
+                try:
+                    os.remove(old_path)
+                except OSError:
+                    pass
+                os.rename(exe_path, old_path)
+                os.rename(tmp_path, exe_path)
+                if self.language == 'en':
+                    msg = f"v{new_version} downloaded. Please restart to apply."
+                else:
+                    msg = f"v{new_version} 已下载，请重启应用以生效。"
+            else:
+                if self.language == 'en':
+                    msg = f"v{new_version} downloaded to {exe_path}"
+                else:
+                    msg = f"v{new_version} 已下载到 {exe_path}"
+
+            self.root.after(0, lambda: self.status_bar.config(text=f"✅ {msg}"))
+            self.root.after(0, lambda: messagebox.showinfo(
+                "Update" if self.language == 'en' else "更新", msg))
+        except Exception as e:
+            err_msg = f"Update failed: {e}" if self.language == 'en' else f"更新失败: {e}"
+            self.root.after(0, lambda: self.status_bar.config(text=f"❌ {err_msg}"))
 
     # ==================== Window and Title ====================
 

@@ -33,7 +33,15 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
-          ### 🆕 New in v2.1 / v2.1 新功能
+          ### 🆕 New in v2.2 / v2.2 新功能
+          - 📁 User data directory `~/.calcpaper` / 用户数据目录
+            - Config & session stored in home directory / 配置和会话存储在用户主目录
+            - Auto-migrate from old location / 自动从旧位置迁移
+          - 🔄 Auto online update / 在线自动更新
+            - Download & replace executable after confirmation / 确认后自动下载替换可执行文件
+            - Platform-aware (Windows/macOS/Linux) / 自动识别平台
+
+          ### 🆕 From v2.1 / v2.1 功能
           - 📆 workday() working day calculation / 工作日计算函数
             - Auto-skip weekends / 自动跳过周末
             - Custom holidays: `workday(Y20260411, 10, Y20260501/-Y20260412)`
@@ -47,7 +55,6 @@ jobs:
           ### 🆕 From v2.0 / v2.0 功能
           - 📅 Date & time arithmetic / 日期时间加减运算 (Y/T/M/W/D/h/m/s)
           - ✏️ Variable name autocomplete / 变量名自动补全
-          - 🔄 Auto update check on startup / 启动时自动检查更新
           - 🖥️ Packaged exe supports CLI mode / 打包程序支持 CLI 模式
 
           ### ✅ All Features / 全部功能
@@ -61,7 +68,8 @@ jobs:
           - 📆 workday() working day calculation / 工作日计算
           - 💯 Percentage calculation / 百分数计算
           - ✏️ Variable autocomplete / 变量自动补全
-          - 🔄 Auto update check / 自动检查更新
+          - 🔄 Auto update check / 自动检查更新（含自动下载）
+          - 📁 User data directory / 用户数据目录 (~/.calcpaper)
           - 💾 Session auto-restore / 会话自动恢复
           - ⚙️ Config persistence / 配置持久化
           - ⌨️ Customizable shortcuts / 可自定义快捷键
