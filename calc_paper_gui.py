@@ -481,52 +481,61 @@ class CalculatorGUIAdvanced:
 
     def _start_update_check(self):
         """Start background update check"""
-        def on_update_found(new_version, download_url, asset_url=None):
-            # Schedule callback on main thread
-            self.root.after(0, lambda: self._show_update_notification(new_version, download_url, asset_url))
-
-        checker = UpdateChecker(VERSION, self.language, on_update_found)
-        checker.check()
+        UpdateChecker(VERSION, self.language, self._show_update_notification).check()
 
     def _show_update_notification(self, new_version, download_url, asset_url=None):
-        """Show update notification and auto-download if asset available"""
-        if self.language == 'en':
-            msg = f"New version {new_version} available! Download now?"
-        else:
-            msg = f"发现新版本 {new_version}！是否立即下载更新？"
-
-        if not messagebox.askyesno(
-            "Update" if self.language == 'en' else "更新检查", msg):
-            return
-
-        if asset_url:
-            # Auto-download in background
-            if self.language == 'en':
-                self.status_bar.config(text="⏳ Downloading update...")
+        """Show update notification and auto-download"""
+        def show():
+            title = "Update" if self.language == 'en' else "更新检查"
+            msg = f"New version {new_version} available! Download now?" if self.language == 'en' else f"发现新版本 {new_version}！是否立即下载更新？"
+            if not messagebox.askyesno(title, msg):
+                return
+            if asset_url:
+                self.status_bar.config(text="⏳ Downloading update..." if self.language == 'en' else "⏳ 正在下载更新...")
+                self.root.update()
+                threading.Thread(target=lambda: self._download_update(asset_url, new_version), daemon=True).start()
             else:
-                self.status_bar.config(text="⏳ 正在下载更新...")
-            self.root.update()
-            threading.Thread(target=lambda: self._download_update(asset_url, new_version), daemon=True).start()
-        else:
-            webbrowser.open(download_url)
+                self.status_bar.config(text="⏳ Downloading update..." if self.language == 'en' else "⏳ 正在下载更新...")
+                self.root.update()
+                threading.Thread(target=lambda: self._download_update(download_url, new_version), daemon=True).start()
+        self.root.after(0, show)
 
     def _download_update(self, asset_url, new_version):
-        """Download update and replace current executable."""
+        """Download update with progress reporting."""
         try:
+            import time
             req = urllib.request.Request(asset_url, headers={"User-Agent": "CalcPaper"})
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                data = resp.read()
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                total = int(resp.headers.get("Content-Length", 0))
+                downloaded = 0
+                chunks = []
+                start_time = time.time()
+                while True:
+                    chunk = resp.read(8192)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    downloaded += len(chunk)
+                    elapsed = time.time() - start_time
+                    speed = downloaded / elapsed if elapsed > 0 else 0
+                    dl_mb = downloaded / 1048576
+                    if total > 0:
+                        total_mb = total / 1048576
+                        pct = downloaded * 100 // total
+                        msg = f"⏳ {pct}%  {dl_mb:.1f}/{total_mb:.1f}MB  {speed/1024:.0f}KB/s"
+                    else:
+                        msg = f"⏳ {dl_mb:.1f}MB  {speed/1024:.0f}KB/s"
+                    self.root.after(0, lambda m=msg: self.status_bar.config(text=m))
+                data = b"".join(chunks)
 
-            # Determine current exe path
+            # Determine exe path
             exe_path = sys.executable
             if getattr(sys, 'frozen', False):
                 exe_path = sys.executable
             else:
-                # Running from source — save to same directory
                 ext = ".exe" if sys.platform == "win32" else ""
                 exe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"CalcPaper{ext}")
 
-            # Write to temp file then replace
             tmp_path = exe_path + ".new"
             with open(tmp_path, "wb") as f:
                 f.write(data)
@@ -534,7 +543,6 @@ class CalculatorGUIAdvanced:
             if sys.platform != "win32":
                 os.chmod(tmp_path, 0o755)
 
-            # On Windows, can't replace running exe directly — rename
             if getattr(sys, 'frozen', False):
                 old_path = exe_path + ".old"
                 try:
@@ -543,15 +551,9 @@ class CalculatorGUIAdvanced:
                     pass
                 os.rename(exe_path, old_path)
                 os.rename(tmp_path, exe_path)
-                if self.language == 'en':
-                    msg = f"v{new_version} downloaded. Please restart to apply."
-                else:
-                    msg = f"v{new_version} 已下载，请重启应用以生效。"
+                msg = f"v{new_version} downloaded. Restart to apply." if self.language == 'en' else f"v{new_version} 已下载，重启生效。"
             else:
-                if self.language == 'en':
-                    msg = f"v{new_version} downloaded to {exe_path}"
-                else:
-                    msg = f"v{new_version} 已下载到 {exe_path}"
+                msg = f"v{new_version} downloaded to {exe_path}" if self.language == 'en' else f"v{new_version} 已下载到 {exe_path}"
 
             self.root.after(0, lambda: self.status_bar.config(text=f"✅ {msg}"))
             self.root.after(0, lambda: messagebox.showinfo(

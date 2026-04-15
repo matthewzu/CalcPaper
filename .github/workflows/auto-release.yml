@@ -33,7 +33,12 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
-          ### 🆕 New in v2.2 / v2.2 新功能
+          ### 🆕 New in v2.3 / v2.3 新功能
+          - 📊 Download progress display (percentage, speed, size) / 下载进度显示（百分比、速度、大小）
+          - 🔄 Always download update (no browser fallback) / 始终下载更新（不再跳转浏览器）
+          - 🧹 Simplified update flow aligned with GanttPilot / 简化更新流程，与 GanttPilot 对齐
+
+          ### 🆕 From v2.2 / v2.2 功能
           - 📁 User data directory `~/.calcpaper` / 用户数据目录
             - Config & session stored in home directory / 配置和会话存储在用户主目录
             - Auto-migrate from old location / 自动从旧位置迁移
