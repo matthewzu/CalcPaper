@@ -1577,6 +1577,10 @@ hex(颜色)
   - Window size, position, language, font are remembered
   - All shortcuts are customizable via Settings button
   - Update check runs in background on startup
+
+=== Related Projects ===
+  GanttPilot - Collaborative Project Manager with Gantt Chart
+  https://github.com/matthewzu/GanttPilot
 """
 
     def _help_text_zh(self):
@@ -1675,6 +1679,10 @@ hex(颜色)
   - 窗口大小、位置、语言、字体会被记住
   - 所有快捷键可通过设置按钮自定义
   - 启动时后台自动检查更新
+
+=== 相关项目 ===
+  GanttPilot - 基于甘特图的协作式项目管理器
+  https://github.com/matthewzu/GanttPilot
 """
 
 

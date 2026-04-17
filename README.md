@@ -321,6 +321,10 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 - **Discussions**: [GitHub Discussions](https://github.com/matthewzu/CalcPaper/discussions)
 - **Email**: xiaofeng_zu@163.com
 
+### 🔗 Related Projects
+
+- [GanttPilot](https://github.com/matthewzu/GanttPilot) - Collaborative Project Manager with Gantt Chart
+
 ---
 
 ## 中文
@@ -628,6 +632,10 @@ h + 数字 (小时)    m + 数字 (分钟)    s + 数字 (秒)
 - **Issues**: [GitHub Issues](https://github.com/matthewzu/CalcPaper/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/matthewzu/CalcPaper/discussions)
 - **Email**: xiaofeng_zu@163.com
+
+### 🔗 相关项目
+
+- [GanttPilot](https://github.com/matthewzu/GanttPilot) - 基于甘特图的协作式项目管理器
 
 ---
 
