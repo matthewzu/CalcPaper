@@ -98,6 +98,25 @@ class CalculatorPaperAdvanced:
         
         return result
 
+    def _normalize_comma_numbers(self, expr):
+        """Normalize comma-separated numbers like 59,200 → 59200.
+        Matches patterns like 1,000 or 1,234,567 but not standalone commas."""
+        return re.sub(r'(\d{1,3}(?:,\d{3})+)(?!\w)', lambda m: m.group(1).replace(',', ''), expr)
+
+    @staticmethod
+    def format_comma_number(value):
+        """Format a number with comma separators: 59200 → 59,200"""
+        if isinstance(value, float):
+            if value == int(value):
+                return f"{int(value):,}"
+            # Format with 2 decimal places
+            int_part = int(value)
+            frac_part = f"{value - int_part:.2f}"[1:]  # ".xx"
+            return f"{int_part:,}{frac_part}"
+        if isinstance(value, int):
+            return f"{value:,}"
+        return str(value)
+
     def parse_line(self, line):
         """Parse a single line expression"""
         line = line.strip()
@@ -109,6 +128,9 @@ class CalculatorPaperAdvanced:
         if '#' in line:
             line = line.split('#')[0].strip()
 
+        # Normalize comma-separated numbers (e.g. 59,200 → 59200)
+        line = self._normalize_comma_numbers(line)
+
         # Check if hex function is used (standalone only, cannot be assigned or used in expressions)
         use_hex_func = False
 
@@ -117,6 +139,9 @@ class CalculatorPaperAdvanced:
         bitmap_endian = None
         bitmap_width = None
 
+        # Check if comma function is used (standalone only, formats result with comma separators)
+        use_comma_func = False
+
         hex_pattern = r'^hex\s*\(\s*(.+)\s*\)$'
         hex_func_match = re.match(hex_pattern, line, re.IGNORECASE)
 
@@ -124,6 +149,9 @@ class CalculatorPaperAdvanced:
         # 3rd parameter is optional width
         bitmap_pattern = r'^bitmap\s*\(\s*(.+?)(?:\s*,\s*([01]))?(?:\s*,\s*(\d+))?\s*\)$'
         bitmap_match = re.match(bitmap_pattern, line, re.IGNORECASE)
+
+        comma_pattern = r'^comma\s*\(\s*(.+)\s*\)$'
+        comma_func_match = re.match(comma_pattern, line, re.IGNORECASE)
 
         if hex_func_match:
             use_hex_func = True
@@ -151,6 +179,13 @@ class CalculatorPaperAdvanced:
                     return None, None, f"错误: bitmap 宽度参数必须是正整数", None, False, None
             
             # Keep only the value expression for evaluation
+            line = value_expr
+            label = None
+            is_assignment = False
+
+        elif comma_func_match:
+            use_comma_func = True
+            value_expr = comma_func_match.group(1).strip()
             line = value_expr
             label = None
             is_assignment = False
@@ -264,8 +299,8 @@ class CalculatorPaperAdvanced:
             # Evaluate expression
             result = self.evaluate(expr_with_vars, has_hex_bin)
 
-            # Save variable (only for non-bitmap/hex calls)
-            if label and not use_bitmap and not use_hex_func:
+            # Save variable (only for non-bitmap/hex/comma calls)
+            if label and not use_bitmap and not use_hex_func and not use_comma_func:
                 self.variables[label] = result
 
             # Return result and substituted expression (if variables were replaced)
@@ -290,6 +325,10 @@ class CalculatorPaperAdvanced:
                     int_result = int(result)
                     if int_result == result:
                         hex_info = f"0x{int_result:X}"
+
+            # Generate comma display info
+            if use_comma_func:
+                hex_info = self.format_comma_number(result)
 
             # Return result, label, substituted expression, bit info, bitmap flag, hex info
             return result, label, replaced_expr, bit_info, use_bitmap, hex_info
@@ -324,7 +363,7 @@ class CalculatorPaperAdvanced:
         def replace_func(match):
             var_name = match.group(1)
             # Skip placeholders and function names
-            if var_name.startswith('__PROTECTED_') or var_name.lower() in ['swap', 'bitmap', 'hex']:
+            if var_name.startswith('__PROTECTED_') or var_name.lower() in ['swap', 'bitmap', 'hex', 'comma']:
                 return var_name
             # Skip date/time/duration literals (reserved keyword pattern)
             if self._is_reserved_keyword(var_name):
@@ -598,7 +637,7 @@ class CalculatorPaperAdvanced:
         """Check if identifier is a reserved keyword (Y/T/M/W/D/h/m/s followed by digits, or function names)"""
         if not isinstance(name, str):
             return False
-        if name.lower() in ('workday',):
+        if name.lower() in ('workday', 'comma'):
             return True
         return bool(re.match(r'^[YTMWDhms]\d+$', name))
 

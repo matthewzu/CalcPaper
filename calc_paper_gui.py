@@ -259,6 +259,8 @@ class CalculatorGUIAdvanced:
         self.root = root
         self.min_font_size = 8
         self.max_font_size = 32
+        self._active_dialog = None
+        self._focus_restore_id = None
 
         # Set window icon
         self._set_icon()
@@ -285,6 +287,9 @@ class CalculatorGUIAdvanced:
         # Bind window resize event
         self.root.bind('<Configure>', self.on_window_configure)
 
+        # Focus restoration: bring modal dialog back to front when main window gets focus
+        self.root.bind("<FocusIn>", self._on_main_focus)
+
         # Restore last session
         self.root.after(100, self._restore_session_and_init)
 
@@ -308,6 +313,45 @@ class CalculatorGUIAdvanced:
 
         # Start background update check (2 second delay)
         self.root.after(2000, self._start_update_check)
+
+    # ==================== Dialog Focus Management ====================
+
+    def _on_main_focus(self, event=None):
+        """Handle <FocusIn> on main window — debounce and restore dialog focus."""
+        if self._focus_restore_id is not None:
+            self.root.after_cancel(self._focus_restore_id)
+        self._focus_restore_id = self.root.after(50, self._restore_dialog_focus)
+
+    def _has_active_dialog(self):
+        """Return True if a modal dialog is already open (prevents duplicates)."""
+        dlg = self._active_dialog
+        if dlg is not None:
+            try:
+                if dlg.winfo_exists():
+                    dlg.lift()
+                    dlg.focus_force()
+                    return True
+            except Exception:
+                pass
+            self._active_dialog = None
+        return False
+
+    def _restore_dialog_focus(self):
+        """Bring active modal dialog to front if it still exists."""
+        self._focus_restore_id = None
+        dlg = self._active_dialog
+        if dlg is not None:
+            try:
+                if dlg.winfo_exists():
+                    dlg.deiconify()
+                    dlg.lift()
+                    dlg.focus_force()
+                    try:
+                        dlg.grab_set()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     # ==================== Config Persistence ====================
 
@@ -905,12 +949,15 @@ class CalculatorGUIAdvanced:
 
     def open_shortcut_config(self):
         """Open settings dialog (shortcuts + data directory)"""
+        if self._has_active_dialog():
+            return
         dialog = tk.Toplevel(self.root)
         title = "Settings" if self.language == 'en' else "设置"
         dialog.title(title)
         dialog.geometry("550x480")
         dialog.transient(self.root)
         dialog.grab_set()
+        self._active_dialog = dialog
 
         names = SHORTCUT_NAMES_EN if self.language == 'en' else SHORTCUT_NAMES_ZH
 
@@ -1018,6 +1065,7 @@ class CalculatorGUIAdvanced:
             msg = "Settings saved" if self.language == 'en' else "设置已保存"
             self.status_bar.config(text=msg)
             dialog.destroy()
+            self._active_dialog = None
 
         def reset_shortcuts():
             for action_name, entry in entries.items():
@@ -1030,12 +1078,18 @@ class CalculatorGUIAdvanced:
         reset_text = "Reset" if self.language == 'en' else "恢复默认"
         cancel_text = "Cancel" if self.language == 'en' else "取消"
 
+        def _close_dialog():
+            dialog.destroy()
+            self._active_dialog = None
+
         tk.Button(btn_frame, text=save_text, command=apply_settings, bg="#4CAF50", fg="white",
                   font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text=reset_text, command=reset_shortcuts,
                   font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text=cancel_text, command=dialog.destroy,
+        tk.Button(btn_frame, text=cancel_text, command=_close_dialog,
                   font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
+
+        dialog.protocol("WM_DELETE_WINDOW", _close_dialog)
 
     # ==================== Calculation ====================
 
@@ -1151,6 +1205,10 @@ hex(swap(net_data))
 hex(255)
 hex(color)
 
+# comma: display with thousand separators
+comma(1234567)
+59,200 + 1,000
+
 # Date/time arithmetic
 today = Y20260410
 deadline = today + D10
@@ -1203,6 +1261,10 @@ hex(swap(网络数据))
 # hex 函数
 hex(255)
 hex(颜色)
+
+# comma: 千分位格式显示
+comma(1234567)
+59,200 + 1,000
 
 # 日期运算
 今天 = Y20260410
@@ -1506,10 +1568,13 @@ hex(颜色)
 
     def show_help(self):
         """Show help dialog matching current language"""
+        if self._has_active_dialog():
+            return
         dialog = tk.Toplevel(self.root)
         dialog.title("Help" if self.language == 'en' else "帮助")
         dialog.geometry("700x550")
         dialog.transient(self.root)
+        self._active_dialog = dialog
 
         text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=("Consolas", 10), state=tk.NORMAL)
         text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -1522,7 +1587,12 @@ hex(颜色)
         text.insert("1.0", content)
         text.config(state=tk.DISABLED)
 
-        tk.Button(dialog, text="OK", command=dialog.destroy, padx=20, pady=5).pack(pady=(0, 10))
+        def _close_help():
+            dialog.destroy()
+            self._active_dialog = None
+
+        tk.Button(dialog, text="OK", command=_close_help, padx=20, pady=5).pack(pady=(0, 10))
+        dialog.protocol("WM_DELETE_WINDOW", _close_help)
 
     def _help_text_en(self):
         return f"""CalcPaper v{VERSION} - Smart Calculator for Programmers
@@ -1537,6 +1607,7 @@ hex(颜色)
   0xFF, 0x1A2B            Hexadecimal
   0b1010, 0b11110000      Binary
   255                     Decimal
+  59,200                  Comma-separated (auto-converted to 59200)
 
 === Bitwise Operations ===
   <<   Left shift         e.g. 0b1010 << 2
@@ -1552,6 +1623,7 @@ hex(颜色)
   bitmap(value, 0, 32)    Bit visualization with width
   swap(value)             Byte order swap (can use in expressions)
   hex(value)              Display as hexadecimal
+  comma(value)            Display with comma separators (e.g. 59,200)
 
 === Date/Time Arithmetic (NEW in v2.0) ===
   Yyyyymmdd               Date literal      e.g. Y20260410
@@ -1639,6 +1711,7 @@ hex(颜色)
   0xFF, 0x1A2B            16进制
   0b1010, 0b11110000      2进制
   255                     10进制
+  59,200                  千分位格式（自动转换为 59200）
 
 === 位运算 ===
   <<   左移               例: 0b1010 << 2
@@ -1654,6 +1727,7 @@ hex(颜色)
   bitmap(数值, 0, 32)     位结构可视化（指定宽度）
   swap(数值)              字节序交换（可用于表达式）
   hex(数值)               显示16进制
+  comma(数值)             千分位格式显示（如 59,200）
 
 === 日期/时间运算（v2.0 新增）===
   Yyyyymmdd               日期字面量      例: Y20260410
