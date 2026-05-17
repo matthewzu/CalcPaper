@@ -577,6 +577,15 @@ class CalculatorGUIAdvanced:
                 self.output_text.configure(state=tk.DISABLED)
             self.last_saved_input = input_content
 
+            # Re-run calculation silently to populate variables
+            if input_content.strip():
+                try:
+                    self.calculator = CalculatorPaperAdvanced(language=self.language)
+                    self.calculator.process_text(input_content)
+                    self._refresh_variables_tab()
+                except Exception:
+                    pass
+
         input_c = self.input_text.get("1.0", "end-1c")
         output_c = self.output_text.get("1.0", "end-1c")
         self.save_gui_state(input_c, output_c)
@@ -756,31 +765,31 @@ class CalculatorGUIAdvanced:
             return f"{label} ({disp})" if disp else label
 
         if hasattr(self, 'calc_button'):
-            self.calc_button.configure(text=_btn("Calculate", "计算", "calculate"))
+            self.calc_button.configure(text=_btn("▶ Calculate", "▶ 计算", "calculate"))
         if hasattr(self, 'clear_button'):
             self.clear_button.configure(text=_btn("Clear", "清空", "clear"))
         if hasattr(self, 'undo_button'):
-            self.undo_button.configure(text=_btn("Undo", "撤销", "undo"))
+            self.undo_button.configure(text="↩ " + ("Undo" if self.language == 'en' else "撤销"))
         if hasattr(self, 'redo_button'):
-            self.redo_button.configure(text=_btn("Redo", "恢复", "redo"))
+            self.redo_button.configure(text="↪ " + ("Redo" if self.language == 'en' else "恢复"))
         if hasattr(self, 'example_button'):
-            self.example_button.configure(text=_btn("Example", "示例", "load_example"))
+            self.example_button.configure(text="📋 " + ("Example" if self.language == 'en' else "示例"))
         if hasattr(self, 'open_button'):
-            self.open_button.configure(text=_btn("Open", "打开", "open_file"))
+            self.open_button.configure(text="📂 " + ("Open" if self.language == 'en' else "打开"))
         if hasattr(self, 'save_button'):
-            self.save_button.configure(text=_btn("Save", "保存", "save_file"))
+            self.save_button.configure(text="💾 " + ("Save" if self.language == 'en' else "保存"))
         if hasattr(self, 'lang_button'):
-            self.lang_button.configure(text="中文" if self.language == 'en' else "EN")
+            self.lang_button.configure(text="🌐 中文" if self.language == 'en' else "🌐 EN")
         if hasattr(self, 'help_button'):
-            self.help_button.configure(text=_btn("Help", "帮助", "help"))
+            self.help_button.configure(text="? " + ("Help" if self.language == 'en' else "帮助"))
         if hasattr(self, 'input_label'):
             self.input_label.configure(text="Input:" if self.language == 'en' else "输入:")
         if hasattr(self, 'output_label'):
             self.output_label.configure(text="Output:" if self.language == 'en' else "输出:")
         if hasattr(self, 'update_btn'):
-            self.update_btn.configure(text="⟳ Update" if self.language == 'en' else "⟳ 更新")
+            self.update_btn.configure(text="⟳ " + ("Update" if self.language == 'en' else "更新"))
         if hasattr(self, 'shortcut_button'):
-            self.shortcut_button.configure(text="⚙ Settings" if self.language == 'en' else "⚙ 设置")
+            self.shortcut_button.configure(text="⚙ " + ("Settings" if self.language == 'en' else "设置"))
 
         self.update_initial_font_display()
         self.update_undo_redo_buttons()
@@ -792,19 +801,47 @@ class CalculatorGUIAdvanced:
             self.font_size = min(self.font_size + 2, self.max_font_size)
             self.update_fonts()
             msg = f"Font: {self.font_size}" if self.language == 'en' else f"字体: {self.font_size}"
-            self.status_var.set(msg)
-            self.root.after(3000, self.restore_normal_status)
+            self._toast(msg)
 
     def decrease_font(self):
         if self.font_size > self.min_font_size:
             self.font_size = max(self.font_size - 2, self.min_font_size)
             self.update_fonts()
             msg = f"Font: {self.font_size}" if self.language == 'en' else f"字体: {self.font_size}"
-            self.status_var.set(msg)
-            self.root.after(3000, self.restore_normal_status)
+            self._toast(msg)
 
     def restore_normal_status(self):
         self.status_var.set("Ready" if self.language == 'en' else "就绪")
+
+    def _toast(self, message, duration=3000):
+        """Show a toast-style status message that auto-clears."""
+        self.status_var.set(message)
+        if hasattr(self, '_toast_timer'):
+            self.root.after_cancel(self._toast_timer)
+        self._toast_timer = self.root.after(duration, self.restore_normal_status)
+
+    def _switch_to_editor(self):
+        """Switch to the Editor tab."""
+        if hasattr(self, 'tabview') and hasattr(self, '_editor_tab_name'):
+            try:
+                self.tabview.set(self._editor_tab_name)
+            except Exception:
+                pass
+
+    def _on_tab_changed(self):
+        """Called when tab selection changes. Disable editor buttons on non-editor tabs."""
+        current = self.tabview.get()
+        is_editor = (current == self._editor_tab_name)
+        state = tk.NORMAL if is_editor else tk.DISABLED
+        for btn in (self.calc_button, self.clear_button, self.open_button,
+                    self.save_button, self.example_button):
+            btn.configure(state=state)
+        # Undo/redo respect both tab state and history state
+        if is_editor:
+            self.update_undo_redo_buttons()
+        else:
+            self.undo_button.configure(state=tk.DISABLED)
+            self.redo_button.configure(state=tk.DISABLED)
 
     def update_initial_font_display(self):
         if hasattr(self, 'font_size_label'):
@@ -814,6 +851,10 @@ class CalculatorGUIAdvanced:
     def update_fonts(self):
         self.input_text.configure(font=("Consolas", self.font_size))
         self.output_text.configure(font=("Consolas", self.font_size))
+        if hasattr(self, 'vars_text'):
+            self.vars_text.configure(font=("Consolas", self.font_size))
+        if hasattr(self, 'history_text'):
+            self.history_text.configure(font=("Consolas", self.font_size))
         if hasattr(self, 'font_size_label'):
             self.font_size_label.configure(text=f"{self.font_size}")
 
@@ -835,6 +876,10 @@ class CalculatorGUIAdvanced:
 
         self.input_text.configure(bg=bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
         self.output_text.configure(bg=output_bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
+        if hasattr(self, 'vars_text'):
+            self.vars_text.configure(bg=output_bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
+        if hasattr(self, 'history_text'):
+            self.history_text.configure(bg=output_bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
         # Re-apply syntax highlighting colors for the current theme
         if self.output_text.get("1.0", "end-1c").strip():
             self.apply_syntax_highlighting()
@@ -844,17 +889,125 @@ class CalculatorGUIAdvanced:
         ctk.set_appearance_mode(mode)
         self.root.after(100, self._apply_text_theme)
 
+    def _refresh_variables_tab(self):
+        """Update the Variables tab with currently defined variables and their values."""
+        if not hasattr(self, 'vars_text'):
+            return
+        import datetime
+        variables = {}
+        if hasattr(self, 'calculator') and hasattr(self.calculator, 'variables'):
+            variables = self.calculator.variables
+
+        self.vars_text.configure(state=tk.NORMAL)
+        self.vars_text.delete("1.0", tk.END)
+        if variables:
+            header = "Variable            Value\n" if self.language == 'en' else "变量名              值\n"
+            self.vars_text.insert(tk.END, header)
+            self.vars_text.insert(tk.END, "─" * 44 + "\n")
+            for name, val in variables.items():
+                if isinstance(val, datetime.date) and not isinstance(val, datetime.datetime):
+                    display = val.strftime("Y%Y%m%d") + f"  ({val.strftime('%Y-%m-%d')})"
+                elif isinstance(val, datetime.time):
+                    display = val.strftime("T%H%M%S") + f"  ({val.strftime('%H:%M:%S')})"
+                elif isinstance(val, int) and (val > 255 or val < 0):
+                    display = f"{val}  (0x{val & 0xFFFFFFFFFFFFFFFF:X})"
+                else:
+                    display = str(val)
+                self.vars_text.insert(tk.END, f"{name:<20}{display}\n")
+        else:
+            hint = "No variables defined yet.\nRun a calculation to see variables here." if self.language == 'en' \
+                else "暂无变量。\n运行计算后变量会显示在这里。"
+            self.vars_text.insert(tk.END, hint)
+        self.vars_text.configure(state=tk.DISABLED)
+
+    def _refresh_history_tab(self):
+        """Update the History tab showing what changed between each calculation."""
+        if not hasattr(self, 'history_text'):
+            return
+        self.history_text.configure(state=tk.NORMAL)
+        self.history_text.delete("1.0", tk.END)
+
+        # Configure tags for diff display
+        self.history_text.tag_config("added", foreground="#4EC9B0")
+        self.history_text.tag_config("removed", foreground="#F44747")
+        self.history_text.tag_config("header", foreground="#569CD6", font=("Consolas", self.font_size, "bold"))
+        self.history_text.tag_config("result", foreground="#6A9955")
+        self.history_text.tag_config("current_marker", foreground="#DCDCAA", font=("Consolas", self.font_size, "bold"))
+
+        if self.gui_history and len(self.gui_history) > 1:
+            count = 0
+            for i in range(len(self.gui_history) - 1, 0, -1):
+                inp, out = self.gui_history[i]
+                if not inp.strip():
+                    continue
+                count += 1
+
+                # Current position marker
+                is_current = (i == self.gui_history_index)
+                at_latest = (self.gui_history_index == len(self.gui_history) - 1)
+
+                # Header
+                self.history_text.insert(tk.END, f"── #{count} ", "header")
+                if is_current and not at_latest:
+                    self.history_text.insert(tk.END, "◀ CURRENT ", "current_marker")
+                elif is_current and at_latest and count == 1:
+                    self.history_text.insert(tk.END, "◀ LATEST ", "current_marker")
+                self.history_text.insert(tk.END, "──\n", "header")
+
+                # Show diff: what changed from previous state
+                prev_inp = self.gui_history[i - 1][0] if i > 0 else ""
+                cur_lines = set(l.strip() for l in inp.strip().split('\n') if l.strip() and not l.strip().startswith('#'))
+                prev_lines = set(l.strip() for l in prev_inp.strip().split('\n') if l.strip() and not l.strip().startswith('#'))
+
+                added = cur_lines - prev_lines
+                removed = prev_lines - cur_lines
+
+                if added:
+                    for line in list(added)[:4]:
+                        self.history_text.insert(tk.END, f"  + {line}\n", "added")
+                    if len(added) > 4:
+                        self.history_text.insert(tk.END, f"  + ... (+{len(added)-4} more)\n", "added")
+                if removed:
+                    for line in list(removed)[:2]:
+                        self.history_text.insert(tk.END, f"  - {line}\n", "removed")
+                    if len(removed) > 2:
+                        self.history_text.insert(tk.END, f"  - ... (+{len(removed)-2} more)\n", "removed")
+
+                if not added and not removed:
+                    # No code diff (maybe just whitespace change), show input preview
+                    lines = [l for l in inp.strip().split('\n') if l.strip() and not l.strip().startswith('#')]
+                    for l in lines[:2]:
+                        self.history_text.insert(tk.END, f"  {l}\n")
+
+                # Show last result
+                if out.strip():
+                    out_lines = [l for l in out.strip().split('\n') if l.strip() and '=' in l]
+                    if out_lines:
+                        last = out_lines[-1].strip()
+                        if len(last) > 60:
+                            last = last[:57] + "..."
+                        self.history_text.insert(tk.END, f"  → {last}\n", "result")
+
+                self.history_text.insert(tk.END, "\n")
+                if count >= 20:
+                    break
+        else:
+            hint = "No history yet.\nCalculation history will appear here." if self.language == 'en' \
+                else "暂无历史记录。\n计算历史会显示在这里。"
+            self.history_text.insert(tk.END, hint)
+        self.history_text.configure(state=tk.DISABLED)
+
 
     # ==================== Widget Creation ====================
 
     def create_widgets(self):
         # Main container
         main_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(6, 10))
         main_frame.grid_rowconfigure(1, weight=1)
         main_frame.grid_columnconfigure(0, weight=1)
 
-        # ========== Toolbar ==========
+        # ========== Toolbar (single row, grouped) ==========
         toolbar = ctk.CTkFrame(main_frame, fg_color="transparent")
         toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 6))
 
@@ -865,109 +1018,161 @@ class CalculatorGUIAdvanced:
             label = en if self.language == 'en' else zh
             return f"{label} ({disp})" if disp else label
 
-        self.calc_button = ctk.CTkButton(toolbar, text=_btn_text("Calculate", "计算", "calculate"),
-                                          command=self.calculate, fg_color="#4CAF50", hover_color="#388E3C", width=100)
-        self.calc_button.pack(side=tk.LEFT, padx=2)
+        # Left: Primary actions
+        # Group 1: Calculate + Clear
+        self.calc_button = ctk.CTkButton(toolbar, text=_btn_text("▶ Calculate", "▶ 计算", "calculate"),
+                                          command=self.calculate, fg_color="#2563EB", hover_color="#1D4ED8",
+                                          width=120, height=32, font=ctk.CTkFont(size=13, weight="bold"))
+        self.calc_button.pack(side=tk.LEFT, padx=(0, 3))
 
         self.clear_button = ctk.CTkButton(toolbar, text=_btn_text("Clear", "清空", "clear"),
-                                           command=self.clear_all, fg_color="#f44336", hover_color="#D32F2F", width=80)
-        self.clear_button.pack(side=tk.LEFT, padx=2)
+                                           command=self.clear_all, fg_color="#DC2626", hover_color="#B91C1C",
+                                           width=70, height=32)
+        self.clear_button.pack(side=tk.LEFT, padx=(0, 6))
 
-        self.undo_button = ctk.CTkButton(toolbar, text=_btn_text("Undo", "撤销", "undo"),
-                                          command=self.undo, fg_color="#FF9800", hover_color="#F57C00", width=80, state=tk.DISABLED)
+        # Separator
+        ctk.CTkFrame(toolbar, width=1, height=24, fg_color="gray50").pack(side=tk.LEFT, padx=4)
+
+        # Group 2: Undo / Redo
+        self.undo_button = ctk.CTkButton(toolbar, text="↩ " + ("Undo" if self.language == 'en' else "撤销"),
+                                          command=self.undo, width=70, height=32, state=tk.DISABLED)
         self.undo_button.pack(side=tk.LEFT, padx=2)
 
-        self.redo_button = ctk.CTkButton(toolbar, text=_btn_text("Redo", "恢复", "redo"),
-                                          command=self.redo, fg_color="#FF9800", hover_color="#F57C00", width=80, state=tk.DISABLED)
-        self.redo_button.pack(side=tk.LEFT, padx=2)
+        self.redo_button = ctk.CTkButton(toolbar, text="↪ " + ("Redo" if self.language == 'en' else "恢复"),
+                                          command=self.redo, width=70, height=32, state=tk.DISABLED)
+        self.redo_button.pack(side=tk.LEFT, padx=(2, 6))
 
-        self.example_button = ctk.CTkButton(toolbar, text=_btn_text("Example", "示例", "load_example"),
-                                             command=self.load_example, fg_color="#2196F3", hover_color="#1976D2", width=80)
-        self.example_button.pack(side=tk.LEFT, padx=2)
+        # Separator
+        ctk.CTkFrame(toolbar, width=1, height=24, fg_color="gray50").pack(side=tk.LEFT, padx=4)
 
-        self.open_button = ctk.CTkButton(toolbar, text=_btn_text("Open", "打开", "open_file"),
-                                          command=self.open_file, width=70)
+        # Group 3: File operations
+        self.open_button = ctk.CTkButton(toolbar, text="📂 " + ("Open" if self.language == 'en' else "打开"),
+                                          command=self.open_file, width=70, height=32)
         self.open_button.pack(side=tk.LEFT, padx=2)
 
-        self.save_button = ctk.CTkButton(toolbar, text=_btn_text("Save", "保存", "save_file"),
-                                          command=self.save_file, width=70)
+        self.save_button = ctk.CTkButton(toolbar, text="� " + ("Save" if self.language == 'en' else "保存"),
+                                          command=self.save_file, width=70, height=32)
         self.save_button.pack(side=tk.LEFT, padx=2)
 
-        self.lang_button = ctk.CTkButton(toolbar, text="中文" if self.language == 'en' else "EN",
-                                          command=self.toggle_language, fg_color="#9C27B0", hover_color="#7B1FA2", width=50)
-        self.lang_button.pack(side=tk.LEFT, padx=2)
+        self.example_button = ctk.CTkButton(toolbar, text="� " + ("Example" if self.language == 'en' else "示例"),
+                                             command=self.load_example, width=80, height=32)
+        self.example_button.pack(side=tk.LEFT, padx=2)
 
-        # Right side of toolbar
-        update_text = "⟳ Update" if self.language == 'en' else "⟳ 更新"
-        self.update_btn = ctk.CTkButton(toolbar, text=update_text, command=self.manual_update_check, width=80)
+        # Right side: secondary actions + font controls
+        # (packed from RIGHT, so order is reversed visually)
+        self.update_btn = ctk.CTkButton(toolbar, text="⟳ " + ("Update" if self.language == 'en' else "更新"),
+                                         command=self.manual_update_check, width=72, height=28)
         self.update_btn.pack(side=tk.RIGHT, padx=2)
 
-        self.help_button = ctk.CTkButton(toolbar, text=_btn_text("Help", "帮助", "help"),
-                                          command=self.show_help, fg_color="#607D8B", hover_color="#455A64", width=70)
+        self.help_button = ctk.CTkButton(toolbar, text="? " + ("Help" if self.language == 'en' else "帮助"),
+                                          command=self.show_help, width=62, height=28)
         self.help_button.pack(side=tk.RIGHT, padx=2)
 
-        self.shortcut_button = ctk.CTkButton(toolbar, text="⚙ Settings" if self.language == 'en' else "⚙ 设置",
-                                              command=self.open_shortcut_config,
-                                              fg_color="#607D8B", hover_color="#455A64", width=80)
+        self.shortcut_button = ctk.CTkButton(toolbar, text="⚙ " + ("Settings" if self.language == 'en' else "设置"),
+                                              command=self.open_shortcut_config, width=76, height=28)
         self.shortcut_button.pack(side=tk.RIGHT, padx=2)
 
-        self.font_size_label = ctk.CTkLabel(toolbar, text=f"{self.font_size}", width=24)
+        self.lang_button = ctk.CTkButton(toolbar, text="🌐 中文" if self.language == 'en' else "🌐 EN",
+                                          command=self.toggle_language, width=62, height=28)
+        self.lang_button.pack(side=tk.RIGHT, padx=2)
+
+        # Separator before font controls
+        ctk.CTkFrame(toolbar, width=1, height=24, fg_color="gray50").pack(side=tk.RIGHT, padx=4)
+
+        self.font_size_label = ctk.CTkLabel(toolbar, text=f"{self.font_size}", width=22,
+                                             font=ctk.CTkFont(size=11))
         self.font_size_label.pack(side=tk.RIGHT, padx=1)
 
-        font_minus_btn = ctk.CTkButton(toolbar, text="A-", command=self.decrease_font, width=32)
-        font_minus_btn.pack(side=tk.RIGHT, padx=1)
+        self.font_minus_btn = ctk.CTkButton(toolbar, text="A−", command=self.decrease_font,
+                                             width=28, height=28, font=ctk.CTkFont(size=11))
+        self.font_minus_btn.pack(side=tk.RIGHT, padx=1)
 
-        font_plus_btn = ctk.CTkButton(toolbar, text="A+", command=self.increase_font, width=32)
-        font_plus_btn.pack(side=tk.RIGHT, padx=1)
+        self.font_plus_btn = ctk.CTkButton(toolbar, text="A+", command=self.increase_font,
+                                            width=28, height=28, font=ctk.CTkFont(size=11))
+        self.font_plus_btn.pack(side=tk.RIGHT, padx=1)
 
-        # ========== Input/Output Area ==========
-        io_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        io_frame.grid(row=1, column=0, sticky="nsew")
-        io_frame.grid_columnconfigure(0, weight=1)
-        io_frame.grid_columnconfigure(1, weight=1)
-        io_frame.grid_rowconfigure(1, weight=1)
+        # ========== Main Content: CTkTabview ==========
+        self.tabview = ctk.CTkTabview(main_frame, height=400, command=self._on_tab_changed)
+        self.tabview.grid(row=1, column=0, sticky="nsew")
 
-        self.input_label = ctk.CTkLabel(io_frame, text="Input:" if self.language == 'en' else "输入:",
+        # Tab: Editor (input + output side by side)
+        editor_tab_name = "Editor" if self.language == 'en' else "编辑器"
+        self._editor_tab_name = editor_tab_name
+        self.tabview.add(editor_tab_name)
+        editor_tab = self.tabview.tab(editor_tab_name)
+        editor_tab.grid_columnconfigure(0, weight=1)
+        editor_tab.grid_columnconfigure(1, weight=1)
+        editor_tab.grid_rowconfigure(1, weight=1)
+
+        self.input_label = ctk.CTkLabel(editor_tab, text="Input:" if self.language == 'en' else "输入:",
                                          font=ctk.CTkFont(size=12, weight="bold"))
-        self.input_label.grid(row=0, column=0, sticky="w", padx=(0, 5))
+        self.input_label.grid(row=0, column=0, sticky="w", padx=(4, 5), pady=(0, 2))
 
-        self.output_label = ctk.CTkLabel(io_frame, text="Output:" if self.language == 'en' else "输出:",
+        self.output_label = ctk.CTkLabel(editor_tab, text="Output:" if self.language == 'en' else "输出:",
                                           font=ctk.CTkFont(size=12, weight="bold"))
-        self.output_label.grid(row=0, column=1, sticky="w", padx=(5, 0))
+        self.output_label.grid(row=0, column=1, sticky="w", padx=(5, 4), pady=(0, 2))
 
-        # Use tk.Text inside CTkFrame for full text editing support
-        input_container = ctk.CTkFrame(io_frame)
-        input_container.grid(row=1, column=0, sticky="nsew", padx=(0, 4))
+        # Input text area
+        input_container = ctk.CTkFrame(editor_tab, corner_radius=8)
+        input_container.grid(row=1, column=0, sticky="nsew", padx=(4, 4))
         input_container.grid_rowconfigure(0, weight=1)
         input_container.grid_columnconfigure(0, weight=1)
 
         self.input_text = tk.Text(input_container, wrap=tk.WORD, font=("Consolas", self.font_size),
-                                   undo=True, relief=tk.FLAT, padx=8, pady=8)
+                                   undo=True, relief=tk.FLAT, padx=8, pady=8, bd=0, highlightthickness=0)
         input_sb = tk.Scrollbar(input_container, orient=tk.VERTICAL, command=self.input_text.yview)
         self.input_text.configure(yscrollcommand=input_sb.set)
-        self.input_text.grid(row=0, column=0, sticky="nsew")
-        input_sb.grid(row=0, column=1, sticky="ns")
+        self.input_text.grid(row=0, column=0, sticky="nsew", padx=(6, 0), pady=6)
+        input_sb.grid(row=0, column=1, sticky="ns", pady=6)
 
-        output_container = ctk.CTkFrame(io_frame)
-        output_container.grid(row=1, column=1, sticky="nsew", padx=(4, 0))
+        # Output text area
+        output_container = ctk.CTkFrame(editor_tab, corner_radius=8)
+        output_container.grid(row=1, column=1, sticky="nsew", padx=(4, 4))
         output_container.grid_rowconfigure(0, weight=1)
         output_container.grid_columnconfigure(0, weight=1)
 
         self.output_text = tk.Text(output_container, wrap=tk.WORD, font=("Consolas", self.font_size),
-                                    state=tk.DISABLED, relief=tk.FLAT, padx=8, pady=8)
+                                    state=tk.DISABLED, relief=tk.FLAT, padx=8, pady=8, bd=0, highlightthickness=0)
         output_sb = tk.Scrollbar(output_container, orient=tk.VERTICAL, command=self.output_text.yview)
         self.output_text.configure(yscrollcommand=output_sb.set)
-        self.output_text.grid(row=0, column=0, sticky="nsew")
-        output_sb.grid(row=0, column=1, sticky="ns")
+        self.output_text.grid(row=0, column=0, sticky="nsew", padx=(6, 0), pady=6)
+        output_sb.grid(row=0, column=1, sticky="ns", pady=6)
+
+        # Tab: Variables (shows defined variables)
+        vars_tab_name = "Variables" if self.language == 'en' else "变量"
+        self.tabview.add(vars_tab_name)
+        vars_tab = self.tabview.tab(vars_tab_name)
+        vars_tab.grid_rowconfigure(0, weight=1)
+        vars_tab.grid_columnconfigure(0, weight=1)
+
+        self.vars_text = tk.Text(vars_tab, wrap=tk.WORD, font=("Consolas", self.font_size),
+                                  state=tk.DISABLED, relief=tk.FLAT, padx=12, pady=12, bd=0, highlightthickness=0)
+        self.vars_text.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
+
+        # Tab: History (shows calculation history)
+        hist_tab_name = "History" if self.language == 'en' else "历史"
+        self.tabview.add(hist_tab_name)
+        hist_tab = self.tabview.tab(hist_tab_name)
+        hist_tab.grid_rowconfigure(0, weight=1)
+        hist_tab.grid_columnconfigure(0, weight=1)
+
+        self.history_text = tk.Text(hist_tab, wrap=tk.WORD, font=("Consolas", self.font_size),
+                                     state=tk.DISABLED, relief=tk.FLAT, padx=12, pady=12, bd=0, highlightthickness=0)
+        self.history_text.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
 
         # Apply theme colors to text areas
         self._apply_text_theme()
 
-        # ========== Status Bar ==========
+        # ========== Status Bar (toast-style) ==========
         self.status_var = tk.StringVar(value="Ready" if self.language == 'en' else "就绪")
-        status_bar = ctk.CTkLabel(main_frame, textvariable=self.status_var, anchor=tk.W,
-                                   font=ctk.CTkFont(size=11))
-        status_bar.grid(row=2, column=0, sticky="ew", pady=(4, 0))
+        self._status_frame = ctk.CTkFrame(main_frame, corner_radius=6, height=28)
+        self._status_frame.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+        self._status_frame.grid_propagate(False)
+        self._status_frame.grid_columnconfigure(0, weight=1)
+
+        self._status_label = ctk.CTkLabel(self._status_frame, textvariable=self.status_var,
+                                           anchor=tk.W, font=ctk.CTkFont(size=11), padx=10)
+        self._status_label.grid(row=0, column=0, sticky="ew", pady=2)
 
     # ==================== Shortcuts ====================
 
@@ -1187,6 +1392,7 @@ class CalculatorGUIAdvanced:
     # ==================== Calculation ====================
 
     def calculate(self):
+        self._switch_to_editor()
         try:
             input_content = self.input_text.get("1.0", tk.END).strip()
             if not input_content:
@@ -1207,6 +1413,8 @@ class CalculatorGUIAdvanced:
             self.save_gui_state(input_content, output)
             self.last_saved_input = input_content
             self.update_undo_redo_buttons()
+            self._refresh_variables_tab()
+            self._refresh_history_tab()
 
         except Exception as e:
             title = "Error" if self.language == 'en' else "错误"
@@ -1267,6 +1475,7 @@ class CalculatorGUIAdvanced:
     # ==================== Clear/Example/File ====================
 
     def clear_all(self):
+        self._switch_to_editor()
         self.input_text.delete("1.0", tk.END)
         self.output_text.configure(state=tk.NORMAL)
         self.output_text.delete("1.0", tk.END)
@@ -1276,6 +1485,7 @@ class CalculatorGUIAdvanced:
         self.status_var.set("Cleared" if self.language == 'en' else "已清空")
 
     def load_example(self):
+        self._switch_to_editor()
         if self.language == 'en':
             example = """# Advanced CalcPaper Example
 
@@ -1399,6 +1609,7 @@ comma(1234567)
         self.status_var.set("Example loaded" if self.language == 'en' else "已加载示例")
 
     def open_file(self):
+        self._switch_to_editor()
         title = "Open File" if self.language == 'en' else "打开文件"
         filename = filedialog.askopenfilename(title=title, filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
         if filename:
@@ -1494,6 +1705,7 @@ comma(1234567)
             self.last_saved_input = current_input
 
     def undo(self):
+        self._switch_to_editor()
         if self.gui_history_index > 0:
             self.gui_history_index -= 1
             inp, out = self.gui_history[self.gui_history_index]
@@ -1507,10 +1719,12 @@ comma(1234567)
             self.apply_syntax_highlighting()
             self.output_text.configure(state=tk.DISABLED)
             self.input_text.bind('<<Modified>>', self.on_input_modified)
-            self.status_var.set("Undo" if self.language == 'en' else "撤销完成")
+            self._toast("Undo" if self.language == 'en' else "撤销完成")
             self.update_undo_redo_buttons()
+            self._refresh_history_tab()
 
     def redo(self):
+        self._switch_to_editor()
         if self.gui_history_index < len(self.gui_history) - 1:
             self.gui_history_index += 1
             inp, out = self.gui_history[self.gui_history_index]
@@ -1524,8 +1738,9 @@ comma(1234567)
             self.apply_syntax_highlighting()
             self.output_text.configure(state=tk.DISABLED)
             self.input_text.bind('<<Modified>>', self.on_input_modified)
-            self.status_var.set("Redo" if self.language == 'en' else "恢复完成")
+            self._toast("Redo" if self.language == 'en' else "恢复完成")
             self.update_undo_redo_buttons()
+            self._refresh_history_tab()
 
     def update_undo_redo_buttons(self):
         if hasattr(self, 'undo_button'):
@@ -1772,6 +1987,8 @@ comma(1234567)
   - Update check runs in background; click "Update" button to check manually
   - Supports Light/Dark/System appearance modes (Settings)
   - Data directory defaults to ~/.calcpaper, changeable in Settings
+  - Variables tab shows all defined variables after calculation
+  - History tab shows colored diff of changes between calculations
 """
 
     def _help_text_zh(self):
@@ -1867,6 +2084,8 @@ comma(1234567)
   - 启动时后台自动检查更新，点击"更新"按钮可手动检查
   - 支持浅色/深色/跟随系统外观模式（在设置中切换）
   - 数据目录默认为 ~/.calcpaper，可在设置中修改
+  - 变量面板显示计算后所有已定义变量
+  - 历史面板以彩色 diff 显示每次计算的变更
 """
 
 

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.6-blue.svg)
+![Version](https://img.shields.io/badge/version-2.7-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -21,7 +21,7 @@
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, date/time arithmetic, hexadecimal/binary numbers, byte order swapping, and more — making complex calculations as simple as writing on paper.
 
-Version: 2.6
+Version: 2.7
 
 ### 🚀 Quick Start
 
@@ -89,6 +89,7 @@ python main.py --version
 - 📁 🆕 **User Data Directory** - Config and session stored in `~/.calcpaper` (auto-migrated from old location)
 - 🎨 🆕 **Modern UI (CustomTkinter)** - Rounded buttons, hover animations, flat modern design
 - 🌗 🆕 **Appearance Mode** - System / Light / Dark theme switching with live preview
+- 📑 🆕 **Tab Layout** - Editor, Variables, and History tabs with smart button state management
 - 🖥️ 🆕 **GUI + CLI Dual-mode Packaging** - Single executable supports both graphical and command-line interface
 - 💯 **Percentage Calculation** - Direct use of 6.5%, 10%, etc.
 - 💾 **Session Auto-restore** - Auto save and restore content from last session
@@ -337,7 +338,7 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、日期/时间运算、16进制/2进制数值、字节序转换等功能，让复杂计算像在纸上写算式一样简单。
 
-版本：2.6
+版本：2.7
 
 ### 🚀 快速开始
 
@@ -405,6 +406,7 @@ python main.py --version
 - 📁 🆕 **用户数据目录** - 配置和会话存储在 `~/.calcpaper`（自动从旧位置迁移）
 - 🎨 🆕 **现代化界面 (CustomTkinter)** - 圆角按钮、hover 动画、扁平化设计
 - 🌗 🆕 **外观模式切换** - 支持 System / Light / Dark 主题，实时预览
+- 📑 🆕 **Tab 布局** - 编辑器、变量、历史三个面板，按钮状态智能联动
 - 🖥️ 🆕 **GUI + CLI 双模式打包** - 一个可执行文件同时支持图形界面和命令行
 - 💯 **百分数计算** - 直接使用 6.5%、10% 等
 - 💾 **会话自动恢复** - 自动保存和恢复上次退出时的内容
