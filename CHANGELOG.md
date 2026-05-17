@@ -2,6 +2,25 @@
 
 # 更新日志 / Changelog
 
+## [2.6] - 2026-05-17
+
+### 新增 / Added
+- 🎨 **CustomTkinter 现代化界面**：从原生 tkinter 迁移到 CustomTkinter，圆角按钮、hover 动画、现代扁平化 UI
+- 🌗 **外观模式切换**：支持 System / Light / Dark 三种模式，实时预览，跟随系统设置
+- 🔄 **手动更新检查按钮**：工具栏新增 "⟳ Update" 按钮，支持手动触发更新检测，带状态反馈（已是最新/检查失败）
+- 🔗 **更新对话框带链接**：更新确认对话框显示可点击的 CHANGELOG 链接，下载完成后显示 README 链接并自动重启
+- 📂 **数据目录迁移**：设置中修改数据目录时，自动将旧目录的配置和会话文件复制到新目录
+- 🎨 **主题感知语法高亮**：输出区域语法高亮颜色随 Light/Dark 主题自动切换
+
+### 改进 / Improved
+- 🖥️ 工具栏按钮全部使用 CustomTkinter 圆角按钮，带颜色和 hover 效果
+- ⚙️ 设置对话框现代化重构，使用 CTkScrollableFrame 和 CTkSegmentedButton
+- 📝 帮助对话框底部增加可点击的 GitHub 和 GanttPilot 项目链接
+- 🔤 设置按钮和更新按钮显示文字标签，切换语言时同步更新
+
+### 依赖 / Dependencies
+- 新增依赖：`customtkinter`（`pip install customtkinter`）
+
 ## [2.5] - 2026-04-28
 
 ### 新增 / Added

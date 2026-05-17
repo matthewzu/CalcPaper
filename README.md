@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.2-blue.svg)
+![Version](https://img.shields.io/badge/version-2.6-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -21,7 +21,7 @@
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, date/time arithmetic, hexadecimal/binary numbers, byte order swapping, and more — making complex calculations as simple as writing on paper.
 
-Version: 2.2
+Version: 2.6
 
 ### 🚀 Quick Start
 
@@ -56,7 +56,8 @@ CalcPaper.exe --cli
 git clone https://github.com/matthewzu/CalcPaper.git
 cd CalcPaper
 
-# No dependencies needed (uses Python standard library)
+# Install dependency
+pip install customtkinter
 
 # GUI interface (default)
 python main.py
@@ -84,7 +85,10 @@ python main.py --version
 - 📆 🆕 **workday() Working Day Calculation** - Count working days with custom holidays
 - ✏️ 🆕 **Variable Name Autocomplete** - Auto-suggest popup when typing variable names in GUI
 - 🔄 🆕 **Auto Update Check on Startup** - Background check for latest GitHub release, auto-download and replace executable
+- 🔄 🆕 **Manual Update Check** - Toolbar button to manually trigger update check with status feedback
 - 📁 🆕 **User Data Directory** - Config and session stored in `~/.calcpaper` (auto-migrated from old location)
+- 🎨 🆕 **Modern UI (CustomTkinter)** - Rounded buttons, hover animations, flat modern design
+- 🌗 🆕 **Appearance Mode** - System / Light / Dark theme switching with live preview
 - 🖥️ 🆕 **GUI + CLI Dual-mode Packaging** - Single executable supports both graphical and command-line interface
 - 💯 **Percentage Calculation** - Direct use of 6.5%, 10%, etc.
 - 💾 **Session Auto-restore** - Auto save and restore content from last session
@@ -298,7 +302,7 @@ Examples: `Y20260410`, `T143000`, `M3`, `W2`, `D10`, `h2`, `m30`, `s45` are all 
 ### 🖥️ Requirements
 
 - **Python**: 3.6+ (only needed when running from source)
-- **GUI**: tkinter (included with Python)
+- **GUI**: customtkinter (`pip install customtkinter`)
 - **Platform**: Windows, macOS, Linux
 
 ### 🤝 Contributing
@@ -333,7 +337,7 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、日期/时间运算、16进制/2进制数值、字节序转换等功能，让复杂计算像在纸上写算式一样简单。
 
-版本：2.2
+版本：2.6
 
 ### 🚀 快速开始
 
@@ -368,7 +372,8 @@ CalcPaper.exe --cli
 git clone https://github.com/matthewzu/CalcPaper.git
 cd CalcPaper
 
-# 无需安装依赖（使用 Python 标准库）
+# 安装依赖
+pip install customtkinter
 
 # 图形界面（默认）
 python main.py
@@ -396,7 +401,10 @@ python main.py --version
 - 📆 🆕 **workday() 工作日计算** - 计算工作日，支持自定义节假日
 - ✏️ 🆕 **变量名自动补全** - GUI 中输入变量名时自动弹出候选列表
 - 🔄 🆕 **启动时自动检查更新** - 后台检查 GitHub 最新版本，确认后自动下载并替换可执行文件
+- 🔄 🆕 **手动更新检查** - 工具栏按钮手动触发更新检测，带状态反馈
 - 📁 🆕 **用户数据目录** - 配置和会话存储在 `~/.calcpaper`（自动从旧位置迁移）
+- 🎨 🆕 **现代化界面 (CustomTkinter)** - 圆角按钮、hover 动画、扁平化设计
+- 🌗 🆕 **外观模式切换** - 支持 System / Light / Dark 主题，实时预览
 - 🖥️ 🆕 **GUI + CLI 双模式打包** - 一个可执行文件同时支持图形界面和命令行
 - 💯 **百分数计算** - 直接使用 6.5%、10% 等
 - 💾 **会话自动恢复** - 自动保存和恢复上次退出时的内容
@@ -610,7 +618,7 @@ h + 数字 (小时)    m + 数字 (分钟)    s + 数字 (秒)
 ### 🖥️ 系统要求
 
 - **Python**: 3.6+（仅从源码运行时需要）
-- **GUI**: tkinter（Python 自带）
+- **GUI**: customtkinter（`pip install customtkinter`）
 - **平台**: Windows、macOS、Linux
 
 ### 🤝 贡献

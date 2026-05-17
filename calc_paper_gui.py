@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CalcPaper - Advanced Calculator Paper GUI
+CalcPaper - Advanced Calculator Paper GUI (CustomTkinter)
 Supports hex, binary, bitwise operations and byte order display
 
 Copyright (C) 2026 matthewzu <xiaofeng_zu@163.com>
@@ -21,27 +21,32 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import tkinter as tk
-from tkinter import scrolledtext, messagebox, filedialog, simpledialog
+from tkinter import messagebox, filedialog
 import json
 import os
 import sys
 import re
+import subprocess
 import threading
 import urllib.request
 import urllib.error
 import webbrowser
-from calc_paper import CalculatorPaperAdvanced
 
+try:
+    import customtkinter as ctk
+except ImportError:
+    print("customtkinter is required. Install with: pip install customtkinter")
+    sys.exit(1)
+
+from calc_paper import CalculatorPaperAdvanced
 from version import VERSION
 
 # Config file path
-# Default is the executable directory; after PyInstaller packaging, it's the exe directory
 GITHUB_REPO = "matthewzu/CalcPaper"
 
 def _get_exe_dir():
     """Get the directory of the executable"""
     if getattr(sys, 'frozen', False):
-        # After PyInstaller packaging
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
@@ -52,7 +57,6 @@ def _get_user_data_dir():
 DEFAULT_DATA_DIR = _get_user_data_dir()
 BOOTSTRAP_CONFIG = os.path.join(DEFAULT_DATA_DIR, 'calcpaper_config.json')
 
-# Get resource file path (compatible with PyInstaller packaging)
 def _resource_path(filename):
     """Get absolute path of resource file, compatible with PyInstaller packaging"""
     if hasattr(sys, '_MEIPASS'):
@@ -74,7 +78,6 @@ DEFAULT_SHORTCUTS = {
     'help': '<F1>',
 }
 
-# Shortcut display names
 SHORTCUT_NAMES_EN = {
     'calculate': 'Calculate',
     'calculate_alt': 'Calculate (Alt)',
@@ -105,24 +108,89 @@ SHORTCUT_NAMES_ZH = {
 
 
 def shortcut_display(key_str):
-    """Convert tkinter shortcut string to readable format, e.g. <Control-s> -> Ctrl+S"""
+    """Convert tkinter shortcut string to readable format"""
     s = key_str.strip('<>').replace('Control', 'Ctrl').replace('Return', 'Enter')
     parts = s.split('-')
     return '+'.join(p.upper() if len(p) == 1 else p for p in parts)
 
 
-class UpdateChecker:
-    """Background update checker"""
+def _link_dialog(parent, title, message, link_text, link_url, ask=False, gui=None):
+    """Show a dialog with a clickable link (GanttPilot style).
 
-    def __init__(self, current_version, language, callback):
+    Args:
+        parent: parent window
+        title: dialog title
+        message: main text
+        link_text: link display text
+        link_url: link URL
+        ask: True returns bool (Yes/No), False shows OK only
+        gui: GUI instance for _active_dialog tracking
+
+    Returns:
+        bool
+    """
+    if gui and gui._has_active_dialog():
+        return False
+    result = [False]
+    dlg = ctk.CTkToplevel(parent)
+    dlg.title(title)
+    dlg.transient(parent)
+    dlg.grab_set()
+    dlg.resizable(False, False)
+
+    if gui:
+        gui._active_dialog = dlg
+
+    frame = ctk.CTkFrame(dlg, fg_color="transparent")
+    frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=16)
+
+    ctk.CTkLabel(frame, text=message, wraplength=380, justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 8))
+
+    link_label = ctk.CTkLabel(frame, text=link_text, text_color="#3B8ED0", cursor="hand2")
+    link_label.pack(anchor=tk.W, pady=(0, 12))
+    link_label.bind("<Button-1>", lambda e: webbrowser.open(link_url))
+
+    btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
+    btn_frame.pack()
+    if ask:
+        def _yes():
+            result[0] = True
+            dlg.destroy()
+        def _no():
+            result[0] = False
+            dlg.destroy()
+        ctk.CTkButton(btn_frame, text="Yes", command=_yes, width=80).pack(side=tk.LEFT, padx=8)
+        ctk.CTkButton(btn_frame, text="No", command=_no, width=80).pack(side=tk.LEFT, padx=8)
+    else:
+        ctk.CTkButton(btn_frame, text="OK", command=dlg.destroy, width=80).pack()
+
+    dlg.update_idletasks()
+    w = dlg.winfo_reqwidth()
+    h = dlg.winfo_reqheight()
+    px = parent.winfo_x() + (parent.winfo_width() - w) // 2
+    py = parent.winfo_y() + (parent.winfo_height() - h) // 2
+    dlg.geometry(f"+{max(0,px)}+{max(0,py)}")
+    dlg.focus_set()
+    dlg.bind("<Escape>", lambda e: dlg.destroy())
+    parent.wait_window(dlg)
+    if gui:
+        gui._active_dialog = None
+    return result[0]
+
+
+class UpdateChecker:
+    """Background update checker with no_update and fail callbacks (GanttPilot style)"""
+
+    def __init__(self, current_version, language, callback,
+                 no_update_callback=None, fail_callback=None):
         self.current_version = current_version
         self.language = language
-        self.callback = callback  # callback(new_version, download_url, asset_url)
+        self.callback = callback
+        self.no_update_callback = no_update_callback
+        self.fail_callback = fail_callback
 
     def check(self):
-        """Execute check in background thread"""
-        thread = threading.Thread(target=self._do_check, daemon=True)
-        thread.start()
+        threading.Thread(target=self._do_check, daemon=True).start()
 
     def _do_check(self):
         try:
@@ -133,17 +201,16 @@ class UpdateChecker:
             })
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
-            # Skip draft or prerelease
             if data.get("draft") or data.get("prerelease"):
+                if self.no_update_callback:
+                    self.no_update_callback()
                 return
             tag = data.get("tag_name", "").lstrip("v")
             if tag and self._compare_versions(self.current_version, tag):
-                # Find platform-specific asset URL
                 asset_url = None
                 asset_size = 0
                 platform = sys.platform
                 for asset in data.get("assets", []):
-                    # Skip assets still being uploaded
                     if asset.get("state") != "uploaded":
                         continue
                     name = asset.get("name", "").lower()
@@ -159,12 +226,16 @@ class UpdateChecker:
                         asset_size = asset.get("size", 0)
                 dl_url = data.get("html_url", f"https://github.com/{GITHUB_REPO}/releases")
                 self.callback(tag, dl_url, asset_url, asset_size)
+            else:
+                if self.no_update_callback:
+                    self.no_update_callback()
         except Exception:
-            pass  # Silent ignore all errors
+            if self.fail_callback:
+                self.fail_callback()
 
     @staticmethod
     def _compare_versions(current, remote):
-        """Compare version strings. Returns True if remote is newer."""
+        """Returns True if remote is newer."""
         def parse_ver(v):
             v = v.lstrip('v').strip()
             parts = []
@@ -174,10 +245,8 @@ class UpdateChecker:
                 except ValueError:
                     parts.append(0)
             return parts
-
         cur = parse_ver(current)
         rem = parse_ver(remote)
-        # Pad to same length
         max_len = max(len(cur), len(rem))
         cur.extend([0] * (max_len - len(cur)))
         rem.extend([0] * (max_len - len(rem)))
@@ -195,7 +264,6 @@ class AutoCompletePopup:
         self.selected_index = 0
 
     def show(self, candidates, x, y):
-        """Show popup at position with candidates list"""
         self.hide()
         if not candidates:
             return
@@ -216,7 +284,6 @@ class AutoCompletePopup:
 
         self.listbox.selection_set(0)
         self.listbox.bind('<Double-Button-1>', lambda e: self.select_current())
-
         self.popup.bind('<FocusOut>', lambda e: self.root.after(100, self._check_focus))
 
     def _check_focus(self):
@@ -245,13 +312,13 @@ class AutoCompletePopup:
         return None
 
     def move_selection(self, direction):
-        """direction: -1 up, 1 down"""
         if not self.listbox or not self.candidates:
             return
         self.selected_index = max(0, min(len(self.candidates) - 1, self.selected_index + direction))
         self.listbox.selection_clear(0, tk.END)
         self.listbox.selection_set(self.selected_index)
         self.listbox.see(self.selected_index)
+
 
 
 class CalculatorGUIAdvanced:
@@ -265,15 +332,14 @@ class CalculatorGUIAdvanced:
         # Set window icon
         self._set_icon()
 
-        # Load config (language, font, window size, shortcuts)
+        # Load config
         self.load_config()
-
         self.update_title()
 
         # Create calculator instance
         self.calculator = CalculatorPaperAdvanced(language=self.language)
 
-        # GUI-specific history (saves input and output text)
+        # GUI-specific history
         self.gui_history = []
         self.gui_history_index = -1
         self.last_saved_input = ""
@@ -287,22 +353,20 @@ class CalculatorGUIAdvanced:
         # Bind window resize event
         self.root.bind('<Configure>', self.on_window_configure)
 
-        # Focus restoration: bring modal dialog back to front when main window gets focus
+        # Focus restoration
         self.root.bind("<FocusIn>", self._on_main_focus)
 
         # Restore last session
         self.root.after(100, self._restore_session_and_init)
 
-        # Restore window position (needs to be after window is shown)
+        # Restore window position
         self.root.after(150, self._apply_saved_position)
 
         # Autocomplete widget
         self.autocomplete = AutoCompletePopup(self.input_text, self.root)
 
         # Bind autocomplete key events
-        # KeyPress for intercepting Tab/Enter/Up/Down/Escape before text widget processes them
         self.input_text.bind('<KeyPress>', self._on_keypress_for_autocomplete)
-        # KeyRelease for updating autocomplete popup after text changes
         self.input_text.bind('<KeyRelease>', self._on_keyrelease_for_autocomplete)
 
         # Bind input modification event
@@ -317,13 +381,11 @@ class CalculatorGUIAdvanced:
     # ==================== Dialog Focus Management ====================
 
     def _on_main_focus(self, event=None):
-        """Handle <FocusIn> on main window — debounce and restore dialog focus."""
         if self._focus_restore_id is not None:
             self.root.after_cancel(self._focus_restore_id)
         self._focus_restore_id = self.root.after(50, self._restore_dialog_focus)
 
     def _has_active_dialog(self):
-        """Return True if a modal dialog is already open (prevents duplicates)."""
         dlg = self._active_dialog
         if dlg is not None:
             try:
@@ -337,7 +399,6 @@ class CalculatorGUIAdvanced:
         return False
 
     def _restore_dialog_focus(self):
-        """Bring active modal dialog to front if it still exists."""
         self._focus_restore_id = None
         dlg = self._active_dialog
         if dlg is not None:
@@ -356,7 +417,6 @@ class CalculatorGUIAdvanced:
     # ==================== Config Persistence ====================
 
     def _set_icon(self):
-        """Set window icon"""
         try:
             icon_path = _resource_path('calcpaper.ico')
             if os.path.exists(icon_path):
@@ -365,11 +425,6 @@ class CalculatorGUIAdvanced:
             pass
 
     def load_config(self):
-        """Load configuration file
-        
-        Data is stored in ~/.calcpaper by default.
-        Supports migration from old exe-directory layout.
-        """
         defaults = {
             'language': 'en',
             'font_size': 10,
@@ -377,9 +432,10 @@ class CalculatorGUIAdvanced:
             'window_position': None,
             'data_dir': DEFAULT_DATA_DIR,
             'shortcuts': DEFAULT_SHORTCUTS.copy(),
+            'appearance_mode': 'system',
         }
 
-        # Migration: if old config exists in exe dir, migrate to new location
+        # Migration from old exe-directory layout
         exe_dir = _get_exe_dir()
         old_config = os.path.join(exe_dir, 'calcpaper_config.json')
         if old_config != BOOTSTRAP_CONFIG and os.path.exists(old_config) and not os.path.exists(BOOTSTRAP_CONFIG):
@@ -394,7 +450,7 @@ class CalculatorGUIAdvanced:
             except Exception:
                 pass
 
-        # Read config from default location
+        # Read config from default location (~/.calcpaper)
         config = defaults.copy()
         try:
             if os.path.exists(BOOTSTRAP_CONFIG):
@@ -407,13 +463,13 @@ class CalculatorGUIAdvanced:
         except Exception:
             pass
 
-        # Determine data directory
+        # Data directory (config + session all in one dir, default ~/.calcpaper)
         self.data_dir = config.get('data_dir', DEFAULT_DATA_DIR)
         os.makedirs(self.data_dir, exist_ok=True)
         self.config_file = os.path.join(self.data_dir, 'calcpaper_config.json')
         self.session_file = os.path.join(self.data_dir, 'calcpaper_session.json')
 
-        # If data_dir differs from default, re-read full config from actual data_dir
+        # If data_dir differs from default, re-read config from actual location
         if self.config_file != BOOTSTRAP_CONFIG:
             try:
                 if os.path.exists(self.config_file):
@@ -431,17 +487,19 @@ class CalculatorGUIAdvanced:
         self._saved_geometry = config['window_geometry']
         self._saved_position = config.get('window_position')
         self.shortcuts = config['shortcuts']
+        self.appearance_mode = config.get('appearance_mode', 'system')
 
-        # Set window size first
+        # Apply appearance mode
+        ctk.set_appearance_mode(self.appearance_mode)
+
+        # Set window size
         self.root.geometry(self._saved_geometry)
 
     def _apply_saved_position(self):
-        """Apply saved position after window is shown"""
         if self._saved_position:
             try:
                 x, y = self._saved_position.split(',')
                 x, y = int(x), int(y)
-                # Ensure window doesn't appear off-screen
                 screen_w = self.root.winfo_screenwidth()
                 screen_h = self.root.winfo_screenheight()
                 x = max(0, min(x, screen_w - 100))
@@ -451,7 +509,6 @@ class CalculatorGUIAdvanced:
                 pass
 
     def save_config(self):
-        """Save configuration file"""
         w = self.root.winfo_width()
         h = self.root.winfo_height()
         geo = f"{w}x{h}"
@@ -465,12 +522,12 @@ class CalculatorGUIAdvanced:
             'window_position': pos,
             'data_dir': self.data_dir,
             'shortcuts': self.shortcuts,
+            'appearance_mode': self.appearance_mode,
         }
         try:
             os.makedirs(self.data_dir, exist_ok=True)
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)
-            # If data_dir is not default, also save a bootstrap config in default dir (containing only data_dir)
             if self.config_file != BOOTSTRAP_CONFIG:
                 with open(BOOTSTRAP_CONFIG, 'w', encoding='utf-8') as f:
                     json.dump({'data_dir': self.data_dir}, f, ensure_ascii=False, indent=2)
@@ -480,7 +537,6 @@ class CalculatorGUIAdvanced:
     # ==================== Session Persistence ====================
 
     def save_session(self):
-        """Save current session (input and output content)"""
         try:
             input_content = self.input_text.get("1.0", "end-1c")
             output_content = self.output_text.get("1.0", "end-1c")
@@ -495,7 +551,6 @@ class CalculatorGUIAdvanced:
             pass
 
     def load_session(self):
-        """Load last session"""
         try:
             if os.path.exists(self.session_file):
                 with open(self.session_file, 'r', encoding='utf-8') as f:
@@ -505,7 +560,6 @@ class CalculatorGUIAdvanced:
         return None
 
     def _restore_session_and_init(self):
-        """Restore session and initialize state"""
         session = self.load_session()
         if session:
             input_content = session.get('input', '')
@@ -516,49 +570,72 @@ class CalculatorGUIAdvanced:
                 self.input_text.insert("1.0", input_content)
                 self.input_text.bind('<<Modified>>', self.on_input_modified)
             if output_content:
-                self.output_text.config(state=tk.NORMAL)
+                self.output_text.configure(state=tk.NORMAL)
                 self.output_text.delete("1.0", tk.END)
                 self.output_text.insert("1.0", output_content)
                 self.apply_syntax_highlighting()
-                self.output_text.config(state=tk.DISABLED)
+                self.output_text.configure(state=tk.DISABLED)
             self.last_saved_input = input_content
 
-        # Save initial state
         input_c = self.input_text.get("1.0", "end-1c")
         output_c = self.output_text.get("1.0", "end-1c")
         self.save_gui_state(input_c, output_c)
 
     def on_close(self):
-        """Save config and session on window close"""
         self.save_config()
         self.save_session()
         self.root.destroy()
 
+    # ==================== Update Check (GanttPilot style) ====================
+
     def _start_update_check(self):
-        """Start background update check"""
         UpdateChecker(VERSION, self.language, self._show_update_notification).check()
 
+    def manual_update_check(self):
+        """Manual update check with button disable and status feedback."""
+        self.update_btn.configure(state=tk.DISABLED)
+        self.status_var.set("⏳ Checking..." if self.language == 'en' else "⏳ 检查中...")
+
+        def on_result(new_version, download_url, asset_url=None, asset_size=0):
+            self.root.after(0, lambda: self.update_btn.configure(state=tk.NORMAL))
+            if new_version:
+                self.root.after(0, lambda: self._show_update_notification(new_version, download_url, asset_url, asset_size))
+
+        def on_no_update():
+            self.root.after(0, lambda: self.update_btn.configure(state=tk.NORMAL))
+            msg = "Already latest version" if self.language == 'en' else "已是最新版本"
+            self.root.after(0, lambda: self.status_var.set(f"✅ {msg}"))
+
+        def on_fail():
+            self.root.after(0, lambda: self.update_btn.configure(state=tk.NORMAL))
+            msg = "Check failed" if self.language == 'en' else "检查失败"
+            self.root.after(0, lambda: self.status_var.set(f"❌ {msg}"))
+
+        UpdateChecker(VERSION, self.language, on_result,
+                      no_update_callback=on_no_update, fail_callback=on_fail).check()
+
     def _show_update_notification(self, new_version, download_url, asset_url=None, asset_size=0):
-        """Show update notification and auto-download"""
         def show():
             if not asset_url:
-                # No platform-specific asset ready yet
                 title = "Update" if self.language == 'en' else "更新检查"
-                msg = f"v{new_version} release assets are not ready yet. Please try again later." if self.language == 'en' \
+                msg = f"v{new_version} release assets are not ready yet." if self.language == 'en' \
                     else f"v{new_version} 发布资源尚未就绪，请稍后重试。"
                 messagebox.showinfo(title, msg)
                 return
-            title = "Update" if self.language == 'en' else "更新检查"
-            msg = f"New version {new_version} available! Download now?" if self.language == 'en' else f"发现新版本 {new_version}！是否立即下载更新？"
-            if not messagebox.askyesno(title, msg):
+            changelog_url = f"https://github.com/{GITHUB_REPO}/blob/master/CHANGELOG.md"
+            msg = f"New version {new_version} available! Download now?" if self.language == 'en' \
+                else f"发现新版本 {new_version}！是否立即下载更新？"
+            link_text = "📋 " + ("View Changelog" if self.language == 'en' else "查看更新日志")
+            if not _link_dialog(self.root, "Update" if self.language == 'en' else "更新检查",
+                                msg, link_text, changelog_url, ask=True, gui=self):
                 return
-            self.status_bar.config(text="⏳ Downloading update..." if self.language == 'en' else "⏳ 正在下载更新...")
+            self.status_var.set("⏳ Downloading..." if self.language == 'en' else "⏳ 正在下载...")
             self.root.update()
             threading.Thread(target=lambda: self._download_update(asset_url, new_version, asset_size), daemon=True).start()
         self.root.after(0, show)
 
     def _download_update(self, asset_url, new_version, expected_size=0):
-        """Download update with progress reporting and integrity checks."""
+        """Download update with progress and integrity checks, then auto-restart."""
         try:
             import time
             req = urllib.request.Request(asset_url, headers={"User-Agent": "CalcPaper"})
@@ -582,40 +659,23 @@ class CalculatorGUIAdvanced:
                         msg = f"⏳ {pct}%  {dl_mb:.1f}/{total_mb:.1f}MB  {speed/1024:.0f}KB/s"
                     else:
                         msg = f"⏳ {dl_mb:.1f}MB  {speed/1024:.0f}KB/s"
-                    self.root.after(0, lambda m=msg: self.status_bar.config(text=m))
+                    self.root.after(0, lambda m=msg: self.status_var.set(m))
                 data = b"".join(chunks)
 
-            # --- Integrity checks ---
-            # 1. Size check against Content-Length
+            # Integrity checks
             if total > 0 and len(data) != total:
-                raise RuntimeError(
-                    f"Size mismatch: expected {total} bytes, got {len(data)}" if self.language == 'en'
-                    else f"大小不匹配: 预期 {total} 字节, 实际 {len(data)}")
-            # 2. Size check against GitHub asset size
+                raise RuntimeError(f"Size mismatch: expected {total}, got {len(data)}")
             if expected_size > 0 and len(data) != expected_size:
-                raise RuntimeError(
-                    f"Size mismatch with release: expected {expected_size} bytes, got {len(data)}" if self.language == 'en'
-                    else f"与发布信息不匹配: 预期 {expected_size} 字节, 实际 {len(data)}")
-            # 3. Minimum size sanity check (< 100KB is suspicious for an app binary)
+                raise RuntimeError(f"Size mismatch with release: expected {expected_size}, got {len(data)}")
             if len(data) < 102400:
-                raise RuntimeError(
-                    f"Downloaded file too small ({len(data)} bytes), possibly incomplete" if self.language == 'en'
-                    else f"下载文件过小 ({len(data)} 字节)，可能不完整")
-            # 4. Binary header validation
+                raise RuntimeError(f"File too small ({len(data)} bytes)")
             if sys.platform == "win32" and data[:2] != b"MZ":
-                raise RuntimeError(
-                    "Invalid executable (not a valid PE file)" if self.language == 'en'
-                    else "无效的可执行文件 (非有效 PE 格式)")
+                raise RuntimeError("Invalid PE executable")
             elif sys.platform == "darwin" and data[:4] not in (b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe"):
-                raise RuntimeError(
-                    "Invalid executable (not a valid Mach-O file)" if self.language == 'en'
-                    else "无效的可执行文件 (非有效 Mach-O 格式)")
+                raise RuntimeError("Invalid Mach-O executable")
             elif sys.platform.startswith("linux") and data[:4] != b"\x7fELF":
-                raise RuntimeError(
-                    "Invalid executable (not a valid ELF file)" if self.language == 'en'
-                    else "无效的可执行文件 (非有效 ELF 格式)")
+                raise RuntimeError("Invalid ELF executable")
 
-            # Determine exe path
             exe_path = sys.executable
             if getattr(sys, 'frozen', False):
                 exe_path = sys.executable
@@ -638,28 +698,46 @@ class CalculatorGUIAdvanced:
                     pass
                 os.rename(exe_path, old_path)
                 os.rename(tmp_path, exe_path)
-                msg = f"v{new_version} downloaded. Restart to apply." if self.language == 'en' else f"v{new_version} 已下载，重启生效。"
-            else:
-                msg = f"v{new_version} downloaded to {exe_path}" if self.language == 'en' else f"v{new_version} 已下载到 {exe_path}"
 
-            self.root.after(0, lambda: self.status_bar.config(text=f"✅ {msg}"))
-            self.root.after(0, lambda: messagebox.showinfo(
-                "Update" if self.language == 'en' else "更新", msg))
+            # Show completion with README link, then auto-restart
+            def _post_update():
+                readme_url = f"https://github.com/{GITHUB_REPO}#readme"
+                msg = f"v{new_version} downloaded. Restarting..." if self.language == 'en' \
+                    else f"v{new_version} 已下载，即将重启..."
+                link_text = "📖 " + ("View README" if self.language == 'en' else "查看说明")
+                _link_dialog(self.root, "Update" if self.language == 'en' else "更新",
+                             msg, link_text, readme_url, ask=False, gui=self)
+                self._restart_app(exe_path)
+
+            self.root.after(0, _post_update)
         except Exception as e:
             err_msg = f"Update failed: {e}" if self.language == 'en' else f"更新失败: {e}"
-            self.root.after(0, lambda: self.status_bar.config(text=f"❌ {err_msg}"))
+            self.root.after(0, lambda: self.status_var.set(f"❌ {err_msg}"))
+
+    def _restart_app(self, exe_path=None):
+        """Restart the application after update."""
+        if exe_path is None:
+            exe_path = sys.executable
+        try:
+            if sys.platform == "win32":
+                os.startfile(exe_path)
+            else:
+                subprocess.Popen([exe_path], start_new_session=True)
+        except Exception:
+            pass
+        self.root.destroy()
+        sys.exit(0)
 
     # ==================== Window and Title ====================
 
     def on_window_configure(self, event):
-        if event.widget == self.root:
-            self.root.after_idle(self.check_button_scroll_needed)
+        pass  # No button scrolling needed with CTk layout
 
     def update_title(self):
         if self.language == 'en':
-            self.root.title(f"CalcPaper - Advanced v{VERSION}")
+            self.root.title(f"CalcPaper v{VERSION}")
         else:
-            self.root.title(f"计算稿纸 - 高级版 v{VERSION}")
+            self.root.title(f"计算稿纸 v{VERSION}")
 
     # ==================== Language Toggle ====================
 
@@ -670,7 +748,6 @@ class CalculatorGUIAdvanced:
         self.update_button_texts()
 
     def update_button_texts(self):
-        """Update button texts (with shortcut display)"""
         sc = self.shortcuts
 
         def _btn(en, zh, key):
@@ -679,23 +756,31 @@ class CalculatorGUIAdvanced:
             return f"{label} ({disp})" if disp else label
 
         if hasattr(self, 'calc_button'):
-            self.calc_button.config(text=_btn("Calculate", "计算", "calculate"))
+            self.calc_button.configure(text=_btn("Calculate", "计算", "calculate"))
         if hasattr(self, 'clear_button'):
-            self.clear_button.config(text=_btn("Clear", "清空", "clear"))
+            self.clear_button.configure(text=_btn("Clear", "清空", "clear"))
         if hasattr(self, 'undo_button'):
-            self.undo_button.config(text=_btn("Undo", "撤销", "undo"))
+            self.undo_button.configure(text=_btn("Undo", "撤销", "undo"))
         if hasattr(self, 'redo_button'):
-            self.redo_button.config(text=_btn("Redo", "恢复", "redo"))
+            self.redo_button.configure(text=_btn("Redo", "恢复", "redo"))
         if hasattr(self, 'example_button'):
-            self.example_button.config(text=_btn("Load Example", "加载示例", "load_example"))
+            self.example_button.configure(text=_btn("Example", "示例", "load_example"))
         if hasattr(self, 'open_button'):
-            self.open_button.config(text=_btn("Open File", "打开文件", "open_file"))
+            self.open_button.configure(text=_btn("Open", "打开", "open_file"))
         if hasattr(self, 'save_button'):
-            self.save_button.config(text=_btn("Save Result", "保存结果", "save_file"))
+            self.save_button.configure(text=_btn("Save", "保存", "save_file"))
         if hasattr(self, 'lang_button'):
-            self.lang_button.config(text="中文" if self.language == 'en' else "EN")
+            self.lang_button.configure(text="中文" if self.language == 'en' else "EN")
         if hasattr(self, 'help_button'):
-            self.help_button.config(text=_btn("Help", "帮助", "help"))
+            self.help_button.configure(text=_btn("Help", "帮助", "help"))
+        if hasattr(self, 'input_label'):
+            self.input_label.configure(text="Input:" if self.language == 'en' else "输入:")
+        if hasattr(self, 'output_label'):
+            self.output_label.configure(text="Output:" if self.language == 'en' else "输出:")
+        if hasattr(self, 'update_btn'):
+            self.update_btn.configure(text="⟳ Update" if self.language == 'en' else "⟳ 更新")
+        if hasattr(self, 'shortcut_button'):
+            self.shortcut_button.configure(text="⚙ Settings" if self.language == 'en' else "⚙ 设置")
 
         self.update_initial_font_display()
         self.update_undo_redo_buttons()
@@ -707,7 +792,7 @@ class CalculatorGUIAdvanced:
             self.font_size = min(self.font_size + 2, self.max_font_size)
             self.update_fonts()
             msg = f"Font: {self.font_size}" if self.language == 'en' else f"字体: {self.font_size}"
-            self.status_bar.config(text=msg)
+            self.status_var.set(msg)
             self.root.after(3000, self.restore_normal_status)
 
     def decrease_font(self):
@@ -715,72 +800,63 @@ class CalculatorGUIAdvanced:
             self.font_size = max(self.font_size - 2, self.min_font_size)
             self.update_fonts()
             msg = f"Font: {self.font_size}" if self.language == 'en' else f"字体: {self.font_size}"
-            self.status_bar.config(text=msg)
+            self.status_var.set(msg)
             self.root.after(3000, self.restore_normal_status)
 
     def restore_normal_status(self):
-        self.status_bar.config(text="Ready" if self.language == 'en' else "就绪")
+        self.status_var.set("Ready" if self.language == 'en' else "就绪")
 
     def update_initial_font_display(self):
         if hasattr(self, 'font_size_label'):
-            self.font_size_label.config(text=f"{self.font_size}")
-        self.status_bar.config(text="Ready" if self.language == 'en' else "就绪")
+            self.font_size_label.configure(text=f"{self.font_size}")
+        self.status_var.set("Ready" if self.language == 'en' else "就绪")
 
     def update_fonts(self):
-        self.input_text.config(font=("Consolas", self.font_size))
-        self.output_text.config(font=("Consolas", self.font_size))
+        self.input_text.configure(font=("Consolas", self.font_size))
+        self.output_text.configure(font=("Consolas", self.font_size))
         if hasattr(self, 'font_size_label'):
-            self.font_size_label.config(text=f"{self.font_size}")
+            self.font_size_label.configure(text=f"{self.font_size}")
+
+    def _apply_text_theme(self):
+        """Apply theme-appropriate colors to tk.Text widgets based on current appearance mode."""
+        mode = ctk.get_appearance_mode()  # "Dark" or "Light"
+        if mode == "Dark":
+            bg = "#2b2b2b"
+            fg = "#dcdcdc"
+            insert_bg = "white"
+            select_bg = "#264f78"
+            output_bg = "#1e1e1e"
+        else:
+            bg = "#ffffff"
+            fg = "#1e1e1e"
+            insert_bg = "black"
+            select_bg = "#add6ff"
+            output_bg = "#f5f5f5"
+
+        self.input_text.configure(bg=bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
+        self.output_text.configure(bg=output_bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
+        # Re-apply syntax highlighting colors for the current theme
+        if self.output_text.get("1.0", "end-1c").strip():
+            self.apply_syntax_highlighting()
+
+    def _preview_appearance(self, mode):
+        """Live preview appearance mode change from settings dialog."""
+        ctk.set_appearance_mode(mode)
+        self.root.after(100, self._apply_text_theme)
+
 
     # ==================== Widget Creation ====================
 
     def create_widgets(self):
-        main_frame = tk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        main_frame.grid_rowconfigure(0, weight=1)
-        main_frame.grid_rowconfigure(1, weight=0)
-        main_frame.grid_rowconfigure(2, weight=0)
+        # Main container
+        main_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        main_frame.grid_rowconfigure(1, weight=1)
         main_frame.grid_columnconfigure(0, weight=1)
 
-        # ========== Input/Output Area ==========
-        io_frame = tk.Frame(main_frame)
-        io_frame.grid(row=0, column=0, sticky="nsew")
-        io_frame.grid_columnconfigure(0, weight=1)
-        io_frame.grid_columnconfigure(1, weight=1)
-        io_frame.grid_rowconfigure(0, weight=0)
-        io_frame.grid_rowconfigure(1, weight=1)
-
-        input_lbl = "Input:" if self.language == 'en' else "输入区域："
-        self.input_label = tk.Label(io_frame, text=input_lbl, font=("Arial", 10, "bold"))
-        self.input_label.grid(row=0, column=0, sticky="w", padx=(0, 5))
-
-        self.input_text = scrolledtext.ScrolledText(io_frame, wrap=tk.WORD, font=("Consolas", self.font_size))
-        self.input_text.grid(row=1, column=0, sticky="nsew", padx=(0, 5))
-
-        output_lbl = "Output:" if self.language == 'en' else "输出区域："
-        self.output_label = tk.Label(io_frame, text=output_lbl, font=("Arial", 10, "bold"))
-        self.output_label.grid(row=0, column=1, sticky="w", padx=(5, 0))
-
-        self.output_text = scrolledtext.ScrolledText(io_frame, wrap=tk.WORD, font=("Consolas", self.font_size), state=tk.DISABLED)
-        self.output_text.grid(row=1, column=1, sticky="nsew", padx=(5, 0))
-
-        # ========== Button Bar ==========
-        button_frame = tk.Frame(main_frame, height=60)
-        button_frame.grid(row=1, column=0, sticky="ew", pady=(10, 0))
-        button_frame.grid_propagate(False)
-
-        inner_frame = tk.Frame(button_frame)
-        inner_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.button_canvas = tk.Canvas(inner_frame, height=50, highlightthickness=0)
-        self.button_scrollbar = tk.Scrollbar(inner_frame, orient="horizontal", command=self.button_canvas.xview)
-        self.scrollable_frame = tk.Frame(self.button_canvas)
-
-        self.scrollable_frame.bind("<Configure>", lambda e: self.button_canvas.configure(scrollregion=self.button_canvas.bbox("all")))
-        self.button_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.button_canvas.configure(xscrollcommand=self.button_scrollbar.set)
-        self.button_canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # ========== Toolbar ==========
+        toolbar = ctk.CTkFrame(main_frame, fg_color="transparent")
+        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 6))
 
         sc = self.shortcuts
 
@@ -789,108 +865,114 @@ class CalculatorGUIAdvanced:
             label = en if self.language == 'en' else zh
             return f"{label} ({disp})" if disp else label
 
-        self.calc_button = tk.Button(self.scrollable_frame, text=_btn_text("Calculate", "计算", "calculate"),
-                                     command=self.calculate, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), padx=15, pady=3)
-        self.calc_button.pack(side=tk.LEFT, padx=(0, 3))
+        self.calc_button = ctk.CTkButton(toolbar, text=_btn_text("Calculate", "计算", "calculate"),
+                                          command=self.calculate, fg_color="#4CAF50", hover_color="#388E3C", width=100)
+        self.calc_button.pack(side=tk.LEFT, padx=2)
 
-        self.clear_button = tk.Button(self.scrollable_frame, text=_btn_text("Clear", "清空", "clear"),
-                                      command=self.clear_all, bg="#f44336", fg="white", font=("Arial", 10), padx=15, pady=3)
-        self.clear_button.pack(side=tk.LEFT, padx=3)
+        self.clear_button = ctk.CTkButton(toolbar, text=_btn_text("Clear", "清空", "clear"),
+                                           command=self.clear_all, fg_color="#f44336", hover_color="#D32F2F", width=80)
+        self.clear_button.pack(side=tk.LEFT, padx=2)
 
-        self.undo_button = tk.Button(self.scrollable_frame, text=_btn_text("Undo", "撤销", "undo"),
-                                     command=self.undo, bg="#FF9800", fg="white", font=("Arial", 10), padx=15, pady=3)
-        self.undo_button.pack(side=tk.LEFT, padx=3)
+        self.undo_button = ctk.CTkButton(toolbar, text=_btn_text("Undo", "撤销", "undo"),
+                                          command=self.undo, fg_color="#FF9800", hover_color="#F57C00", width=80, state=tk.DISABLED)
+        self.undo_button.pack(side=tk.LEFT, padx=2)
 
-        self.redo_button = tk.Button(self.scrollable_frame, text=_btn_text("Redo", "恢复", "redo"),
-                                     command=self.redo, bg="#FF9800", fg="white", font=("Arial", 10), padx=15, pady=3)
-        self.redo_button.pack(side=tk.LEFT, padx=3)
+        self.redo_button = ctk.CTkButton(toolbar, text=_btn_text("Redo", "恢复", "redo"),
+                                          command=self.redo, fg_color="#FF9800", hover_color="#F57C00", width=80, state=tk.DISABLED)
+        self.redo_button.pack(side=tk.LEFT, padx=2)
 
-        self.example_button = tk.Button(self.scrollable_frame, text=_btn_text("Load Example", "加载示例", "load_example"),
-                                        command=self.load_example, bg="#2196F3", fg="white", font=("Arial", 10), padx=15, pady=3)
-        self.example_button.pack(side=tk.LEFT, padx=3)
+        self.example_button = ctk.CTkButton(toolbar, text=_btn_text("Example", "示例", "load_example"),
+                                             command=self.load_example, fg_color="#2196F3", hover_color="#1976D2", width=80)
+        self.example_button.pack(side=tk.LEFT, padx=2)
 
-        self.open_button = tk.Button(self.scrollable_frame, text=_btn_text("Open File", "打开文件", "open_file"),
-                                     command=self.open_file, font=("Arial", 10), padx=15, pady=3)
-        self.open_button.pack(side=tk.LEFT, padx=3)
+        self.open_button = ctk.CTkButton(toolbar, text=_btn_text("Open", "打开", "open_file"),
+                                          command=self.open_file, width=70)
+        self.open_button.pack(side=tk.LEFT, padx=2)
 
-        self.save_button = tk.Button(self.scrollable_frame, text=_btn_text("Save Result", "保存结果", "save_file"),
-                                     command=self.save_file, font=("Arial", 10), padx=15, pady=3)
-        self.save_button.pack(side=tk.LEFT, padx=3)
+        self.save_button = ctk.CTkButton(toolbar, text=_btn_text("Save", "保存", "save_file"),
+                                          command=self.save_file, width=70)
+        self.save_button.pack(side=tk.LEFT, padx=2)
 
-        self.lang_button = tk.Button(self.scrollable_frame, text="中文" if self.language == 'en' else "EN",
-                                     command=self.toggle_language, font=("Arial", 10), padx=12, pady=3, bg="#9C27B0", fg="white")
-        self.lang_button.pack(side=tk.LEFT, padx=3)
+        self.lang_button = ctk.CTkButton(toolbar, text="中文" if self.language == 'en' else "EN",
+                                          command=self.toggle_language, fg_color="#9C27B0", hover_color="#7B1FA2", width=50)
+        self.lang_button.pack(side=tk.LEFT, padx=2)
 
-        # Shortcut config button
-        shortcut_text = "⌨" 
-        self.shortcut_button = tk.Button(self.scrollable_frame, text=shortcut_text,
-                                         command=self.open_shortcut_config, font=("Arial", 10), padx=8, pady=3, bg="#607D8B", fg="white")
-        self.shortcut_button.pack(side=tk.LEFT, padx=3)
+        # Right side of toolbar
+        update_text = "⟳ Update" if self.language == 'en' else "⟳ 更新"
+        self.update_btn = ctk.CTkButton(toolbar, text=update_text, command=self.manual_update_check, width=80)
+        self.update_btn.pack(side=tk.RIGHT, padx=2)
 
-        # Help button
-        self.help_button = tk.Button(self.scrollable_frame, text=_btn_text("Help", "帮助", "help"),
-                                     command=self.show_help, font=("Arial", 10), padx=8, pady=3, bg="#2196F3", fg="white")
-        self.help_button.pack(side=tk.LEFT, padx=3)
+        self.help_button = ctk.CTkButton(toolbar, text=_btn_text("Help", "帮助", "help"),
+                                          command=self.show_help, fg_color="#607D8B", hover_color="#455A64", width=70)
+        self.help_button.pack(side=tk.RIGHT, padx=2)
 
-        self.font_plus_button = tk.Button(self.scrollable_frame, text="A+", command=self.increase_font,
-                                          font=("Arial", 10, "bold"), padx=8, pady=3, bg="#4CAF50", fg="white")
-        self.font_plus_button.pack(side=tk.LEFT, padx=3)
+        self.shortcut_button = ctk.CTkButton(toolbar, text="⚙ Settings" if self.language == 'en' else "⚙ 设置",
+                                              command=self.open_shortcut_config,
+                                              fg_color="#607D8B", hover_color="#455A64", width=80)
+        self.shortcut_button.pack(side=tk.RIGHT, padx=2)
 
-        self.font_minus_button = tk.Button(self.scrollable_frame, text="A-", command=self.decrease_font,
-                                           font=("Arial", 10, "bold"), padx=8, pady=3, bg="#FF9800", fg="white")
-        self.font_minus_button.pack(side=tk.LEFT, padx=3)
+        self.font_size_label = ctk.CTkLabel(toolbar, text=f"{self.font_size}", width=24)
+        self.font_size_label.pack(side=tk.RIGHT, padx=1)
 
-        self.font_size_label = tk.Label(self.scrollable_frame, text=f"{self.font_size}", font=("Arial", 9),
-                                        padx=5, pady=3, relief=tk.SUNKEN, bd=1, bg="white")
-        self.font_size_label.pack(side=tk.LEFT, padx=3)
+        font_minus_btn = ctk.CTkButton(toolbar, text="A-", command=self.decrease_font, width=32)
+        font_minus_btn.pack(side=tk.RIGHT, padx=1)
 
-        self.button_canvas.bind("<MouseWheel>", lambda e: self.button_canvas.xview_scroll(int(-1*(e.delta/120)), "units"))
-        self.root.after(100, self.setup_button_scrolling)
+        font_plus_btn = ctk.CTkButton(toolbar, text="A+", command=self.increase_font, width=32)
+        font_plus_btn.pack(side=tk.RIGHT, padx=1)
+
+        # ========== Input/Output Area ==========
+        io_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        io_frame.grid(row=1, column=0, sticky="nsew")
+        io_frame.grid_columnconfigure(0, weight=1)
+        io_frame.grid_columnconfigure(1, weight=1)
+        io_frame.grid_rowconfigure(1, weight=1)
+
+        self.input_label = ctk.CTkLabel(io_frame, text="Input:" if self.language == 'en' else "输入:",
+                                         font=ctk.CTkFont(size=12, weight="bold"))
+        self.input_label.grid(row=0, column=0, sticky="w", padx=(0, 5))
+
+        self.output_label = ctk.CTkLabel(io_frame, text="Output:" if self.language == 'en' else "输出:",
+                                          font=ctk.CTkFont(size=12, weight="bold"))
+        self.output_label.grid(row=0, column=1, sticky="w", padx=(5, 0))
+
+        # Use tk.Text inside CTkFrame for full text editing support
+        input_container = ctk.CTkFrame(io_frame)
+        input_container.grid(row=1, column=0, sticky="nsew", padx=(0, 4))
+        input_container.grid_rowconfigure(0, weight=1)
+        input_container.grid_columnconfigure(0, weight=1)
+
+        self.input_text = tk.Text(input_container, wrap=tk.WORD, font=("Consolas", self.font_size),
+                                   undo=True, relief=tk.FLAT, padx=8, pady=8)
+        input_sb = tk.Scrollbar(input_container, orient=tk.VERTICAL, command=self.input_text.yview)
+        self.input_text.configure(yscrollcommand=input_sb.set)
+        self.input_text.grid(row=0, column=0, sticky="nsew")
+        input_sb.grid(row=0, column=1, sticky="ns")
+
+        output_container = ctk.CTkFrame(io_frame)
+        output_container.grid(row=1, column=1, sticky="nsew", padx=(4, 0))
+        output_container.grid_rowconfigure(0, weight=1)
+        output_container.grid_columnconfigure(0, weight=1)
+
+        self.output_text = tk.Text(output_container, wrap=tk.WORD, font=("Consolas", self.font_size),
+                                    state=tk.DISABLED, relief=tk.FLAT, padx=8, pady=8)
+        output_sb = tk.Scrollbar(output_container, orient=tk.VERTICAL, command=self.output_text.yview)
+        self.output_text.configure(yscrollcommand=output_sb.set)
+        self.output_text.grid(row=0, column=0, sticky="nsew")
+        output_sb.grid(row=0, column=1, sticky="ns")
+
+        # Apply theme colors to text areas
+        self._apply_text_theme()
 
         # ========== Status Bar ==========
-        status_frame = tk.Frame(main_frame, height=25)
-        status_frame.grid(row=2, column=0, sticky="ew", pady=(5, 0))
-        status_frame.grid_propagate(False)
-
-        self.status_bar = tk.Label(status_frame, text="Ready" if self.language == 'en' else "就绪",
-                                   bd=1, relief=tk.SUNKEN, anchor=tk.W, font=("Arial", 9))
-        self.status_bar.pack(fill=tk.BOTH, expand=True)
-
-        self.root.after(100, self.update_initial_font_display)
-
-    # ==================== Button Scrolling ====================
-
-    def setup_button_scrolling(self):
-        self.root.update_idletasks()
-        self.check_button_scroll_needed()
-        self.button_canvas.bind('<Configure>', lambda e: self.root.after_idle(self.check_button_scroll_needed))
-
-    def check_button_scroll_needed(self):
-        try:
-            self.root.update_idletasks()
-            if not hasattr(self, 'button_canvas') or not hasattr(self, 'scrollable_frame'):
-                return
-            canvas_width = self.button_canvas.winfo_width()
-            frame_width = self.scrollable_frame.winfo_reqwidth()
-            if canvas_width > 1:
-                if frame_width > canvas_width:
-                    if not self.button_scrollbar.winfo_viewable():
-                        self.button_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-                        self.button_canvas.configure(height=40)
-                else:
-                    if self.button_scrollbar.winfo_viewable():
-                        self.button_scrollbar.pack_forget()
-                        self.button_canvas.configure(height=50)
-        except (tk.TclError, AttributeError):
-            pass
+        self.status_var = tk.StringVar(value="Ready" if self.language == 'en' else "就绪")
+        status_bar = ctk.CTkLabel(main_frame, textvariable=self.status_var, anchor=tk.W,
+                                   font=ctk.CTkFont(size=11))
+        status_bar.grid(row=2, column=0, sticky="ew", pady=(4, 0))
 
     # ==================== Shortcuts ====================
 
     def bind_shortcuts(self):
-        """Bind shortcuts (from config)"""
-        # First unbind all known shortcuts
         self._unbind_all_shortcuts()
-
         sc = self.shortcuts
         actions = {
             'calculate': lambda e: self.calculate(),
@@ -907,7 +989,6 @@ class CalculatorGUIAdvanced:
         }
 
         self._bound_keys = []
-        # Track which keys are "calculate" actions that need newline suppression
         calc_keys = set()
         for action_name, key_str in sc.items():
             if key_str and action_name in actions:
@@ -916,7 +997,6 @@ class CalculatorGUIAdvanced:
                     self._bound_keys.append(key_str)
                     if action_name in ('calculate', 'calculate_alt'):
                         calc_keys.add(key_str)
-                    # Also bind uppercase version
                     if 'Control-' in key_str and len(key_str.split('-')[-1].rstrip('>')) == 1:
                         upper_key = key_str[:-2] + key_str[-2].upper() + key_str[-1]
                         if upper_key != key_str:
@@ -927,7 +1007,6 @@ class CalculatorGUIAdvanced:
                 except Exception:
                     pass
 
-        # Bind calculate shortcuts on input_text to suppress newline insertion
         def _calc_and_break(e):
             self.calculate()
             return "break"
@@ -938,7 +1017,6 @@ class CalculatorGUIAdvanced:
                 pass
 
     def _unbind_all_shortcuts(self):
-        """Unbind all bound shortcuts"""
         if hasattr(self, '_bound_keys'):
             for key in self._bound_keys:
                 try:
@@ -948,72 +1026,77 @@ class CalculatorGUIAdvanced:
         self._bound_keys = []
 
     def open_shortcut_config(self):
-        """Open settings dialog (shortcuts + data directory)"""
+        """Open settings dialog (shortcuts + data directory + appearance)"""
         if self._has_active_dialog():
             return
-        dialog = tk.Toplevel(self.root)
+        dialog = ctk.CTkToplevel(self.root)
         title = "Settings" if self.language == 'en' else "设置"
         dialog.title(title)
-        dialog.geometry("550x480")
+        dialog.geometry("580x520")
         dialog.transient(self.root)
         dialog.grab_set()
         self._active_dialog = dialog
 
         names = SHORTCUT_NAMES_EN if self.language == 'en' else SHORTCUT_NAMES_ZH
 
+        # Scrollable content
+        scroll = ctk.CTkScrollableFrame(dialog)
+        scroll.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # ===== Appearance Mode =====
+        appear_label = ctk.CTkLabel(scroll, text="Appearance" if self.language == 'en' else "外观模式",
+                                     font=ctk.CTkFont(size=13, weight="bold"))
+        appear_label.pack(anchor="w", pady=(0, 4))
+
+        appear_hint = "System = follow OS setting" if self.language == 'en' else "System = 跟随系统设置"
+        ctk.CTkLabel(scroll, text=appear_hint, text_color="gray").pack(anchor="w", pady=(0, 4))
+
+        appear_var = tk.StringVar(value=self.appearance_mode)
+        appear_menu = ctk.CTkSegmentedButton(scroll, values=["system", "light", "dark"], variable=appear_var,
+                                              command=lambda val: self._preview_appearance(val))
+        appear_menu.pack(anchor="w", pady=(0, 12))
+
         # ===== Data Directory =====
-        dir_frame = tk.LabelFrame(dialog,
-                                   text="Data Directory" if self.language == 'en' else "数据目录",
-                                   font=("Arial", 10, "bold"), padx=10, pady=5)
-        dir_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+        dir_label = ctk.CTkLabel(scroll, text="Data Directory" if self.language == 'en' else "数据目录",
+                                  font=ctk.CTkFont(size=13, weight="bold"))
+        dir_label.pack(anchor="w", pady=(0, 4))
 
-        dir_hint = "Config and session files are stored here." if self.language == 'en' \
-            else "配置文件和会话记录保存在此目录。"
-        tk.Label(dir_frame, text=dir_hint, font=("Arial", 9), fg="gray").pack(anchor="w")
+        dir_hint = "Config and session files location. Change requires restart." if self.language == 'en' \
+            else "配置和会话文件存储位置，修改后需重启生效。"
+        ctk.CTkLabel(scroll, text=dir_hint, text_color="gray").pack(anchor="w", pady=(0, 4))
 
-        dir_row = tk.Frame(dir_frame)
-        dir_row.pack(fill=tk.X, pady=3)
-        dir_entry = tk.Entry(dir_row, font=("Consolas", 10))
+        dir_row = ctk.CTkFrame(scroll, fg_color="transparent")
+        dir_row.pack(fill=tk.X, pady=(0, 12))
+        dir_entry = ctk.CTkEntry(dir_row, font=ctk.CTkFont(family="Consolas", size=11), width=400)
         dir_entry.insert(0, self.data_dir)
         dir_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
 
         def browse_dir():
-            d = filedialog.askdirectory(initialdir=self.data_dir,
-                                        title="Select Data Directory" if self.language == 'en' else "选择数据目录")
+            d = filedialog.askdirectory(initialdir=self.data_dir)
             if d:
                 dir_entry.delete(0, tk.END)
                 dir_entry.insert(0, d)
 
-        tk.Button(dir_row, text="...", command=browse_dir, padx=8).pack(side=tk.LEFT)
+        ctk.CTkButton(dir_row, text="📂", command=browse_dir, width=32).pack(side=tk.LEFT)
 
         # ===== Shortcuts =====
-        key_frame = tk.LabelFrame(dialog,
-                                   text="Keyboard Shortcuts" if self.language == 'en' else "快捷键",
-                                   font=("Arial", 10, "bold"), padx=10, pady=5)
-        key_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        key_label = ctk.CTkLabel(scroll, text="Keyboard Shortcuts" if self.language == 'en' else "快捷键",
+                                  font=ctk.CTkFont(size=13, weight="bold"))
+        key_label.pack(anchor="w", pady=(0, 4))
 
         hint = "Click a field, then press the new key combination." if self.language == 'en' \
             else "点击输入框，然后按下新的快捷键组合。"
-        tk.Label(key_frame, text=hint, font=("Arial", 9), fg="gray").pack(anchor="w")
-
-        canvas = tk.Canvas(key_frame)
-        scrollbar = tk.Scrollbar(key_frame, orient="vertical", command=canvas.yview)
-        scroll_frame = tk.Frame(canvas)
-        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        ctk.CTkLabel(scroll, text=hint, text_color="gray").pack(anchor="w", pady=(0, 6))
 
         entries = {}
         for action_name in DEFAULT_SHORTCUTS:
-            row = tk.Frame(scroll_frame)
+            row = ctk.CTkFrame(scroll, fg_color="transparent")
             row.pack(fill=tk.X, pady=2)
 
             display_name = names.get(action_name, action_name)
-            tk.Label(row, text=display_name, width=20, anchor="w", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
+            ctk.CTkLabel(row, text=display_name, width=140, anchor="w").pack(side=tk.LEFT, padx=5)
 
-            entry = tk.Entry(row, width=25, font=("Consolas", 10))
+            entry = ctk.CTkEntry(row, width=200, font=ctk.CTkFont(family="Consolas", size=11))
             entry.insert(0, self.shortcuts.get(action_name, ''))
             entry.pack(side=tk.LEFT, padx=5)
             entries[action_name] = entry
@@ -1039,57 +1122,67 @@ class CalculatorGUIAdvanced:
             entry.bind('<Key>', make_capture(entry))
 
         # ===== Buttons =====
-        btn_frame = tk.Frame(dialog)
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
         btn_frame.pack(pady=10)
 
         def apply_settings():
-            # Save data directory
+            # Appearance
+            new_mode = appear_var.get()
+            if new_mode != self.appearance_mode:
+                self.appearance_mode = new_mode
+                ctk.set_appearance_mode(new_mode)
+                self._apply_text_theme()
+            # Data directory
             new_dir = dir_entry.get().strip()
             if new_dir and new_dir != self.data_dir:
                 if os.path.isdir(new_dir) or not os.path.exists(new_dir):
+                    old_dir = self.data_dir
                     self.data_dir = new_dir
                     os.makedirs(self.data_dir, exist_ok=True)
                     self.config_file = os.path.join(self.data_dir, 'calcpaper_config.json')
                     self.session_file = os.path.join(self.data_dir, 'calcpaper_session.json')
+                    # Migrate files from old directory
+                    import shutil
+                    for fname in ('calcpaper_config.json', 'calcpaper_session.json'):
+                        src = os.path.join(old_dir, fname)
+                        dst = os.path.join(self.data_dir, fname)
+                        if os.path.exists(src) and not os.path.exists(dst):
+                            try:
+                                shutil.copy2(src, dst)
+                            except Exception:
+                                pass
                 else:
-                    messagebox.showwarning(
-                        "Warning" if self.language == 'en' else "警告",
-                        "Invalid directory path" if self.language == 'en' else "无效的目录路径")
+                    messagebox.showwarning("Warning", "Invalid directory path")
                     return
-            # Save shortcuts
+            # Shortcuts
             for action_name, entry in entries.items():
                 self.shortcuts[action_name] = entry.get().strip()
             self.bind_shortcuts()
             self.update_button_texts()
             self.save_config()
-            msg = "Settings saved" if self.language == 'en' else "设置已保存"
-            self.status_bar.config(text=msg)
+            self.status_var.set("Settings saved" if self.language == 'en' else "设置已保存")
             dialog.destroy()
             self._active_dialog = None
 
-        def reset_shortcuts():
+        def reset_all():
             for action_name, entry in entries.items():
                 entry.delete(0, tk.END)
                 entry.insert(0, DEFAULT_SHORTCUTS.get(action_name, ''))
-            dir_entry.delete(0, tk.END)
-            dir_entry.insert(0, DEFAULT_DATA_DIR)
+            appear_var.set("system")
 
-        save_text = "Save" if self.language == 'en' else "保存"
-        reset_text = "Reset" if self.language == 'en' else "恢复默认"
-        cancel_text = "Cancel" if self.language == 'en' else "取消"
-
-        def _close_dialog():
+        def _close():
             dialog.destroy()
             self._active_dialog = None
 
-        tk.Button(btn_frame, text=save_text, command=apply_settings, bg="#4CAF50", fg="white",
-                  font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text=reset_text, command=reset_shortcuts,
-                  font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text=cancel_text, command=_close_dialog,
-                  font=("Arial", 10), padx=15).pack(side=tk.LEFT, padx=5)
+        ctk.CTkButton(btn_frame, text="Save" if self.language == 'en' else "保存",
+                       command=apply_settings, fg_color="#4CAF50", hover_color="#388E3C", width=90).pack(side=tk.LEFT, padx=5)
+        ctk.CTkButton(btn_frame, text="Reset" if self.language == 'en' else "恢复默认",
+                       command=reset_all, width=90).pack(side=tk.LEFT, padx=5)
+        ctk.CTkButton(btn_frame, text="Cancel" if self.language == 'en' else "取消",
+                       command=_close, width=90).pack(side=tk.LEFT, padx=5)
 
-        dialog.protocol("WM_DELETE_WINDOW", _close_dialog)
+        dialog.protocol("WM_DELETE_WINDOW", _close)
+
 
     # ==================== Calculation ====================
 
@@ -1097,20 +1190,20 @@ class CalculatorGUIAdvanced:
         try:
             input_content = self.input_text.get("1.0", tk.END).strip()
             if not input_content:
-                self.status_bar.config(text="Please enter calculation content" if self.language == 'en' else "请输入计算内容")
+                self.status_var.set("Please enter calculation content" if self.language == 'en' else "请输入计算内容")
                 return
 
             self.calculator = CalculatorPaperAdvanced(language=self.language)
             self.calculator.process_text(input_content)
             output = self.calculator.format_output()
 
-            self.output_text.config(state=tk.NORMAL)
+            self.output_text.configure(state=tk.NORMAL)
             self.output_text.delete("1.0", tk.END)
             self.output_text.insert("1.0", output)
             self.apply_syntax_highlighting()
-            self.output_text.config(state=tk.DISABLED)
+            self.output_text.configure(state=tk.DISABLED)
 
-            self.status_bar.config(text="Calculation completed" if self.language == 'en' else "计算完成")
+            self.status_var.set("Calculation completed" if self.language == 'en' else "计算完成")
             self.save_gui_state(input_content, output)
             self.last_saved_input = input_content
             self.update_undo_redo_buttons()
@@ -1118,19 +1211,29 @@ class CalculatorGUIAdvanced:
         except Exception as e:
             title = "Error" if self.language == 'en' else "错误"
             messagebox.showerror(title, str(e))
-            self.status_bar.config(text=f"Error: {e}" if self.language == 'en' else f"错误: {e}")
+            self.status_var.set(f"Error: {e}" if self.language == 'en' else f"错误: {e}")
 
     def apply_syntax_highlighting(self):
         for tag in self.output_text.tag_names():
             self.output_text.tag_remove(tag, "1.0", tk.END)
 
-        self.output_text.tag_config("comment", foreground="gray")
-        self.output_text.tag_config("result", foreground="green", font=("Consolas", 10, "bold"))
-        self.output_text.tag_config("error", foreground="red")
-        self.output_text.tag_config("total", foreground="blue", font=("Consolas", 10, "bold"))
-        self.output_text.tag_config("endian", foreground="purple", font=("Consolas", 10, "bold"))
-        self.output_text.tag_config("bit_info", foreground="darkblue", font=("Consolas", 9))
-        self.output_text.tag_config("hex_result", foreground="#E65100", font=("Consolas", 10, "bold"))
+        mode = ctk.get_appearance_mode()
+        if mode == "Dark":
+            self.output_text.tag_config("comment", foreground="#6A9955")
+            self.output_text.tag_config("result", foreground="#4EC9B0", font=("Consolas", self.font_size, "bold"))
+            self.output_text.tag_config("error", foreground="#F44747")
+            self.output_text.tag_config("total", foreground="#569CD6", font=("Consolas", self.font_size, "bold"))
+            self.output_text.tag_config("endian", foreground="#C586C0", font=("Consolas", self.font_size, "bold"))
+            self.output_text.tag_config("bit_info", foreground="#9CDCFE", font=("Consolas", max(self.font_size - 1, 8)))
+            self.output_text.tag_config("hex_result", foreground="#CE9178", font=("Consolas", self.font_size, "bold"))
+        else:
+            self.output_text.tag_config("comment", foreground="#008000")
+            self.output_text.tag_config("result", foreground="#098658", font=("Consolas", self.font_size, "bold"))
+            self.output_text.tag_config("error", foreground="#CD3131")
+            self.output_text.tag_config("total", foreground="#0000FF", font=("Consolas", self.font_size, "bold"))
+            self.output_text.tag_config("endian", foreground="#AF00DB", font=("Consolas", self.font_size, "bold"))
+            self.output_text.tag_config("bit_info", foreground="#001080", font=("Consolas", max(self.font_size - 1, 8)))
+            self.output_text.tag_config("hex_result", foreground="#A31515", font=("Consolas", self.font_size, "bold"))
 
         content = self.output_text.get("1.0", tk.END)
         lines = content.split('\n')
@@ -1165,12 +1268,12 @@ class CalculatorGUIAdvanced:
 
     def clear_all(self):
         self.input_text.delete("1.0", tk.END)
-        self.output_text.config(state=tk.NORMAL)
+        self.output_text.configure(state=tk.NORMAL)
         self.output_text.delete("1.0", tk.END)
-        self.output_text.config(state=tk.DISABLED)
+        self.output_text.configure(state=tk.DISABLED)
         self.save_gui_state("", "")
         self.last_saved_input = ""
-        self.status_bar.config(text="Cleared" if self.language == 'en' else "已清空")
+        self.status_var.set("Cleared" if self.language == 'en' else "已清空")
 
     def load_example(self):
         if self.language == 'en':
@@ -1293,7 +1396,7 @@ comma(1234567)
         self.save_gui_state(example, "")
         self.last_saved_input = example
         self.input_text.bind('<<Modified>>', self.on_input_modified)
-        self.status_bar.config(text="Example loaded" if self.language == 'en' else "已加载示例")
+        self.status_var.set("Example loaded" if self.language == 'en' else "已加载示例")
 
     def open_file(self):
         title = "Open File" if self.language == 'en' else "打开文件"
@@ -1302,7 +1405,6 @@ comma(1234567)
             try:
                 with open(filename, 'r', encoding='utf-8') as f:
                     content = f.read()
-                # Strip result annotations, extract original expressions
                 content = self._strip_result_annotations(content)
                 self.input_text.unbind('<<Modified>>')
                 self.input_text.delete("1.0", tk.END)
@@ -1310,56 +1412,31 @@ comma(1234567)
                 self.save_gui_state(content, "")
                 self.last_saved_input = content
                 self.input_text.bind('<<Modified>>', self.on_input_modified)
-                self.status_bar.config(text=f"Opened: {filename}" if self.language == 'en' else f"已打开: {filename}")
+                self.status_var.set(f"Opened: {os.path.basename(filename)}" if self.language == 'en' else f"已打开: {os.path.basename(filename)}")
             except Exception as e:
-                messagebox.showerror("Error" if self.language == 'en' else "错误", str(e))
+                messagebox.showerror("Error", str(e))
 
     def _strip_result_annotations(self, text):
-        """Strip result annotations, extract original input expressions
-        
-        Output format examples:
-          a = 0xFF        = 255
-          bitmap(a, 1)    = 255  # 255
-          hex(a)          = 0xFF  # 255
-          Bit index lines, hex lines, etc. (bitmap output supplementary lines)
-        
-        Actions:
-        - Remove bitmap/hex output supplementary lines (indented hex/binary/bits/index lines)
-        - Remove result portion (extra = result and # comment after expression)
-        """
+        """Strip result annotations from output text to extract original input."""
         lines = text.split('\n')
         cleaned = []
         for line in lines:
             stripped = line.strip()
-            # Skip bitmap output supplementary lines (indented info lines)
             if stripped and line.startswith('  ') and any(stripped.startswith(kw) for kw in [
                 '十六进制:', '二进制:', '位数:', '位索引',
                 'Hexadecimal:', 'Binary:', 'Bits:', 'Bit indices',
                 '|'
             ]):
                 continue
-            # Empty lines and comment lines stay unchanged
             if not stripped or stripped.startswith('#'):
                 cleaned.append(line)
                 continue
-            # Process lines with result annotations
-            # Format: "original expression    = result  # comment"
-            # Need to find the result portion after the last meaningful = in the original expression
-            # Strategy: if line has multiple =, first is assignment, rest are results
             if '=' in stripped:
-                # Check if it's an assignment expression (e.g. a = 0xFF)
                 first_eq = stripped.index('=')
                 left = stripped[:first_eq].strip()
                 right_part = stripped[first_eq+1:].strip()
-                
-                # Check if left side is a variable name
                 is_assignment = bool(re.match(r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$', left))
-                
                 if is_assignment:
-                    # Assignment line: a = 0xFF        = 255  # comment
-                    # Need to extract "a = original expression"
-                    # Find result separator (multiple spaces followed by =) in right_part
-                    # Regex match: value part  spaces+= result
                     match = re.match(r'^(.+?)\s{2,}=\s', right_part)
                     if match:
                         original_expr = match.group(1).strip()
@@ -1367,8 +1444,6 @@ comma(1234567)
                     else:
                         cleaned.append(stripped)
                 else:
-                    # Non-assignment line (e.g. bitmap(a, 1)    = 255)
-                    # Find position of multiple spaces + =
                     match = re.match(r'^(.+?)\s{2,}=\s', stripped)
                     if match:
                         original_expr = match.group(1).strip()
@@ -1388,9 +1463,9 @@ comma(1234567)
                 content = self.output_text.get("1.0", tk.END)
                 with open(filename, 'w', encoding='utf-8') as f:
                     f.write(content)
-                self.status_bar.config(text=f"Saved: {filename}" if self.language == 'en' else f"已保存: {filename}")
+                self.status_var.set(f"Saved: {os.path.basename(filename)}" if self.language == 'en' else f"已保存: {os.path.basename(filename)}")
             except Exception as e:
-                messagebox.showerror("Error" if self.language == 'en' else "错误", str(e))
+                messagebox.showerror("Error", str(e))
 
     # ==================== Undo/Redo ====================
 
@@ -1426,13 +1501,13 @@ comma(1234567)
             self.input_text.delete("1.0", tk.END)
             self.input_text.insert("1.0", inp)
             self.last_saved_input = inp
-            self.output_text.config(state=tk.NORMAL)
+            self.output_text.configure(state=tk.NORMAL)
             self.output_text.delete("1.0", tk.END)
             self.output_text.insert("1.0", out)
             self.apply_syntax_highlighting()
-            self.output_text.config(state=tk.DISABLED)
+            self.output_text.configure(state=tk.DISABLED)
             self.input_text.bind('<<Modified>>', self.on_input_modified)
-            self.status_bar.config(text="Undo" if self.language == 'en' else "撤销完成")
+            self.status_var.set("Undo" if self.language == 'en' else "撤销完成")
             self.update_undo_redo_buttons()
 
     def redo(self):
@@ -1443,25 +1518,24 @@ comma(1234567)
             self.input_text.delete("1.0", tk.END)
             self.input_text.insert("1.0", inp)
             self.last_saved_input = inp
-            self.output_text.config(state=tk.NORMAL)
+            self.output_text.configure(state=tk.NORMAL)
             self.output_text.delete("1.0", tk.END)
             self.output_text.insert("1.0", out)
             self.apply_syntax_highlighting()
-            self.output_text.config(state=tk.DISABLED)
+            self.output_text.configure(state=tk.DISABLED)
             self.input_text.bind('<<Modified>>', self.on_input_modified)
-            self.status_bar.config(text="Redo" if self.language == 'en' else "恢复完成")
+            self.status_var.set("Redo" if self.language == 'en' else "恢复完成")
             self.update_undo_redo_buttons()
 
     def update_undo_redo_buttons(self):
         if hasattr(self, 'undo_button'):
-            self.undo_button.config(state=tk.NORMAL if self.gui_history_index > 0 else tk.DISABLED)
+            self.undo_button.configure(state=tk.NORMAL if self.gui_history_index > 0 else tk.DISABLED)
         if hasattr(self, 'redo_button'):
-            self.redo_button.config(state=tk.NORMAL if self.gui_history_index < len(self.gui_history) - 1 else tk.DISABLED)
+            self.redo_button.configure(state=tk.NORMAL if self.gui_history_index < len(self.gui_history) - 1 else tk.DISABLED)
 
     # ==================== Autocomplete ====================
 
     def _get_defined_variables(self):
-        """Parse defined variable names from input area text in real-time"""
         content = self.input_text.get("1.0", "end-1c")
         variables = []
         pattern = re.compile(r'^([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*=', re.MULTILINE)
@@ -1474,13 +1548,11 @@ comma(1234567)
         return variables
 
     def _get_current_prefix(self):
-        """Get the variable name prefix being typed at cursor and its start position"""
         try:
             cursor_pos = self.input_text.index(tk.INSERT)
             line, col = cursor_pos.split('.')
             col = int(col)
             line_text = self.input_text.get(f"{line}.0", f"{line}.{col}")
-            # Walk backwards to find start of current word
             i = len(line_text) - 1
             while i >= 0:
                 ch = line_text[i]
@@ -1498,18 +1570,14 @@ comma(1234567)
             return (None, None)
 
     def _on_keypress_for_autocomplete(self, event):
-        """KeyPress handler: intercept Tab/Enter/Up/Down/Escape when popup is visible"""
         keysym = event.keysym
-
         if keysym == 'Escape' and self.autocomplete.is_visible():
             self.autocomplete.hide()
             return "break"
-
         if keysym in ('Up', 'Down') and self.autocomplete.is_visible():
             direction = -1 if keysym == 'Up' else 1
             self.autocomplete.move_selection(direction)
             return "break"
-
         if keysym == 'Tab' and self.autocomplete.is_visible():
             selected = self.autocomplete.select_current()
             if selected:
@@ -1518,14 +1586,10 @@ comma(1234567)
                     self._insert_completion(selected, prefix_start)
             self.autocomplete.hide()
             return "break"
-
-        # Don't intercept other keys
         return None
 
     def _on_keyrelease_for_autocomplete(self, event):
-        """KeyRelease handler: update autocomplete popup after text changes"""
         keysym = event.keysym
-        # Skip modifier keys and keys already handled by KeyPress
         if keysym in ('Escape', 'Up', 'Down', 'Tab', 'Return',
                        'Shift_L', 'Shift_R', 'Control_L', 'Control_R',
                        'Alt_L', 'Alt_R', 'Caps_Lock'):
@@ -1533,16 +1597,13 @@ comma(1234567)
         self._update_autocomplete()
 
     def _update_autocomplete(self):
-        """Update candidate list based on current prefix"""
         prefix, prefix_start = self._get_current_prefix()
         if not prefix or len(prefix) < 1:
             self.autocomplete.hide()
             return
-
         variables = self._get_defined_variables()
         prefix_lower = prefix.lower()
         matches = [v for v in variables if v.lower().startswith(prefix_lower) and v != prefix]
-
         if matches:
             try:
                 bbox = self.input_text.bbox(tk.INSERT)
@@ -1558,26 +1619,36 @@ comma(1234567)
             self.autocomplete.hide()
 
     def _insert_completion(self, variable_name, prefix_start):
-        """Insert selected variable name into input area, replacing typed prefix"""
         cursor_pos = self.input_text.index(tk.INSERT)
         self.input_text.delete(prefix_start, cursor_pos)
         self.input_text.insert(prefix_start, variable_name)
         self.autocomplete.hide()
 
-    # ==================== Help ====================
+
+    # ==================== Help (GanttPilot style with clickable links) ====================
 
     def show_help(self):
-        """Show help dialog matching current language"""
+        """Show help dialog with clickable project links."""
         if self._has_active_dialog():
             return
-        dialog = tk.Toplevel(self.root)
+        dialog = ctk.CTkToplevel(self.root)
         dialog.title("Help" if self.language == 'en' else "帮助")
-        dialog.geometry("700x550")
+        dialog.geometry("720x580")
         dialog.transient(self.root)
         self._active_dialog = dialog
 
-        text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=("Consolas", 10), state=tk.NORMAL)
-        text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Use tk.Text for rich text display (tags for coloring)
+        text_frame = ctk.CTkFrame(dialog)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        text_frame.grid_rowconfigure(0, weight=1)
+        text_frame.grid_columnconfigure(0, weight=1)
+
+        text = tk.Text(text_frame, wrap=tk.WORD, font=("Consolas", 10), state=tk.NORMAL,
+                       bg="#1e1e1e", fg="#dcdcdc", relief=tk.FLAT, padx=10, pady=10)
+        sb = tk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text.yview)
+        text.configure(yscrollcommand=sb.set)
+        text.grid(row=0, column=0, sticky="nsew")
+        sb.grid(row=0, column=1, sticky="ns")
 
         if self.language == 'en':
             content = self._help_text_en()
@@ -1585,14 +1656,28 @@ comma(1234567)
             content = self._help_text_zh()
 
         text.insert("1.0", content)
-        text.config(state=tk.DISABLED)
+        text.configure(state=tk.DISABLED)
 
-        def _close_help():
+        # Bottom: clickable links + close button
+        bottom = ctk.CTkFrame(dialog, fg_color="transparent")
+        bottom.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        github_url = f"https://github.com/{GITHUB_REPO}"
+        link1 = ctk.CTkLabel(bottom, text=f"📦 GitHub: {GITHUB_REPO}", text_color="#3B8ED0", cursor="hand2")
+        link1.pack(side=tk.LEFT, padx=(0, 16))
+        link1.bind("<Button-1>", lambda e: webbrowser.open(github_url))
+
+        gantt_url = "https://github.com/matthewzu/GanttPilot"
+        link2 = ctk.CTkLabel(bottom, text="📊 GanttPilot", text_color="#3B8ED0", cursor="hand2")
+        link2.pack(side=tk.LEFT, padx=(0, 16))
+        link2.bind("<Button-1>", lambda e: webbrowser.open(gantt_url))
+
+        def _close():
             dialog.destroy()
             self._active_dialog = None
 
-        tk.Button(dialog, text="OK", command=_close_help, padx=20, pady=5).pack(pady=(0, 10))
-        dialog.protocol("WM_DELETE_WINDOW", _close_help)
+        ctk.CTkButton(bottom, text="OK", command=_close, width=80).pack(side=tk.RIGHT)
+        dialog.protocol("WM_DELETE_WINDOW", _close)
 
     def _help_text_en(self):
         return f"""CalcPaper v{VERSION} - Smart Calculator for Programmers
@@ -1625,7 +1710,7 @@ comma(1234567)
   hex(value)              Display as hexadecimal
   comma(value)            Display with comma separators (e.g. 59,200)
 
-=== Date/Time Arithmetic (NEW in v2.0) ===
+=== Date/Time Arithmetic ===
   Yyyyymmdd               Date literal      e.g. Y20260410
   Thhmmss                 Time literal      e.g. T143000
 
@@ -1647,25 +1732,18 @@ comma(1234567)
     time - duration  ->  time       T143000 - m30 = T140000
     time - time      ->  seconds    T173000 - T090000 = 30600
 
-=== workday() Working Day Calculation (NEW in v2.0) ===
+=== workday() Working Day Calculation ===
   workday(start, days)              Count working days (skip weekends)
   workday(start, days, holidays)    With custom holidays
 
   Holiday format (separated by /):
-    Y20260501                       Add as holiday (+ optional)
+    Y20260501                       Add as holiday
     -Y20260412                      Remove from holidays (make workday)
     Y20260501/-Y20260412            Combined
-
-  Example:
-    workday(Y20260411, 10)                          10 working days
-    workday(Y20260411, 20, Y20260501)               add May Day
-    workday(Y20260411, 10, -Y20260412)              remove weekend
-    workday(Y20260411, 15, Y20260501/-Y20260412)    combined
 
 === Reserved Keywords ===
   Y, T, M, W, D (uppercase) and h, m, s (lowercase) followed by
   digits are reserved and cannot be used as variable names.
-  e.g. M3, h2, Y20260410, T143000 are all reserved.
 
 === Keyboard Shortcuts ===
   Ctrl+Enter    Calculate
@@ -1690,12 +1768,10 @@ comma(1234567)
 === Tips ===
   - Results are auto-saved and restored on next launch
   - Window size, position, language, font are remembered
-  - All shortcuts are customizable via Settings button
-  - Update check runs in background on startup
-
-=== Related Projects ===
-  GanttPilot - Collaborative Project Manager with Gantt Chart
-  https://github.com/matthewzu/GanttPilot
+  - All shortcuts are customizable via Settings (gear icon)
+  - Update check runs in background; click "Update" button to check manually
+  - Supports Light/Dark/System appearance modes (Settings)
+  - Data directory defaults to ~/.calcpaper, changeable in Settings
 """
 
     def _help_text_zh(self):
@@ -1729,7 +1805,7 @@ comma(1234567)
   hex(数值)               显示16进制
   comma(数值)             千分位格式显示（如 59,200）
 
-=== 日期/时间运算（v2.0 新增）===
+=== 日期/时间运算 ===
   Yyyyymmdd               日期字面量      例: Y20260410
   Thhmmss                 时间字面量      例: T143000
 
@@ -1751,25 +1827,18 @@ comma(1234567)
     时间 - 时长  ->  时间       T143000 - m30 = T140000
     时间 - 时间  ->  秒数       T173000 - T090000 = 30600
 
-=== workday() 工作日计算（v2.0 新增）===
+=== workday() 工作日计算 ===
   workday(起始日期, 天数)           计算工作日（自动跳过周末）
   workday(起始日期, 天数, 节假日)   自定义节假日
 
   节假日格式（用 / 分隔）：
-    Y20260501                       添加为节假日（+号可省略）
+    Y20260501                       添加为节假日
     -Y20260412                      移除节假日（变为工作日）
     Y20260501/-Y20260412            组合使用
-
-  示例：
-    workday(Y20260411, 10)                          10个工作日
-    workday(Y20260411, 20, Y20260501)               添加五一
-    workday(Y20260411, 10, -Y20260412)              移除周末
-    workday(Y20260411, 15, Y20260501/-Y20260412)    组合
 
 === 保留关键字 ===
   Y、T、M、W、D（大写）和 h、m、s（小写）后跟数字
   为保留关键字，不可用作变量名。
-  例: M3、h2、Y20260410、T143000 均为保留关键字。
 
 === 快捷键 ===
   Ctrl+Enter    计算
@@ -1794,20 +1863,19 @@ comma(1234567)
 === 提示 ===
   - 计算结果自动保存，下次启动自动恢复
   - 窗口大小、位置、语言、字体会被记住
-  - 所有快捷键可通过设置按钮自定义
-  - 启动时后台自动检查更新
-
-=== 相关项目 ===
-  GanttPilot - 基于甘特图的协作式项目管理器
-  https://github.com/matthewzu/GanttPilot
+  - 所有快捷键可通过设置按钮（齿轮图标）自定义
+  - 启动时后台自动检查更新，点击"更新"按钮可手动检查
+  - 支持浅色/深色/跟随系统外观模式（在设置中切换）
+  - 数据目录默认为 ~/.calcpaper，可在设置中修改
 """
 
 
 def main():
-    root = tk.Tk()
+    ctk.set_default_color_theme("blue")
+    root = ctk.CTk()
     app = CalculatorGUIAdvanced(root)
     root.mainloop()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
