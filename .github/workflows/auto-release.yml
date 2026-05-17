@@ -33,10 +33,13 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
-          ### 🆕 New in v2.3 / v2.3 新功能
-          - 📊 Download progress display (percentage, speed, size) / 下载进度显示（百分比、速度、大小）
-          - 🔄 Always download update (no browser fallback) / 始终下载更新（不再跳转浏览器）
-          - 🧹 Simplified update flow aligned with GanttPilot / 简化更新流程，与 GanttPilot 对齐
+          ### 🆕 New in v2.7 / v2.7 新功能
+          - 📑 Tab layout: Editor, Variables, History / Tab 布局：编辑器、变量、历史
+          - 🎨 CustomTkinter modern UI / 现代化界面
+          - 🌗 Appearance mode: System/Light/Dark / 外观模式切换
+          - 🔄 Manual update check button / 手动更新检查按钮
+          - 📊 Variables panel with auto-refresh / 变量面板自动刷新
+          - 📜 History panel with colored diff / 历史面板彩色差异显示
 
           ### 🆕 From v2.2 / v2.2 功能
           - 📁 User data directory `~/.calcpaper` / 用户数据目录
@@ -99,8 +102,8 @@ jobs:
         python-version: '3.9'
     - name: Build
       run: |
-        pip install pyinstaller
-        pyinstaller --onefile --windowed --name=CalcPaper --icon=calcpaper.ico --add-data "calcpaper.ico;." main.py
+        pip install pyinstaller customtkinter
+        pyinstaller --onefile --windowed --name=CalcPaper --icon=calcpaper.ico --add-data "calcpaper.ico;." --collect-data customtkinter main.py
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v1
       with:
@@ -119,8 +122,8 @@ jobs:
         python-version: '3.9'
     - name: Build
       run: |
-        pip install pyinstaller
-        pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." main.py
+        pip install pyinstaller customtkinter
+        pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." --collect-data customtkinter main.py
         # onefile mode generates a single executable, not a .app bundle
         # Create DMG containing the executable
         mkdir dmg_temp
@@ -144,8 +147,8 @@ jobs:
         python-version: '3.9'
     - name: Build
       run: |
-        pip install pyinstaller
-        pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." main.py
+        pip install pyinstaller customtkinter
+        pyinstaller --onefile --windowed --name=CalcPaper --add-data "calcpaper.ico:." --collect-data customtkinter main.py
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v1
       with:
