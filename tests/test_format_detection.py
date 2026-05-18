@@ -5,6 +5,8 @@ Tests the auto-detection of output format based on expression literals.
 Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5
 """
 
+from __future__ import annotations
+
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

@@ -5,6 +5,8 @@ Unit tests verifying the core functionality of the global variable store:
 set/get/has/get_all, subscribe/unsubscribe, remove, and clear.
 """
 
+from __future__ import annotations
+
 import pytest
 from calc_session import GlobalVariableStore
 

@@ -18,10 +18,12 @@ the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 """
 
+from __future__ import annotations
+
 import re
 import copy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 from calc_paper import CalculatorPaperAdvanced
 from calc_session import GlobalVariableStore
@@ -37,7 +39,7 @@ class LineResult:
     variables_defined: list[str] = field(default_factory=list)
     variables_used: list[str] = field(default_factory=list)
     is_error: bool = False
-    error_message: str | None = None
+    error_message: Optional[str] = None
 
 
 class DependencyGraph:
@@ -137,7 +139,7 @@ class DependencyGraph:
         """获取指定行使用的变量集合"""
         return self._uses.get(line_index, set())
 
-    def get_var_definition_line(self, var_name: str) -> int | None:
+    def get_var_definition_line(self, var_name: str) -> Optional[int]:
         """获取定义指定变量的行号"""
         return self._var_to_line.get(var_name)
 
@@ -519,7 +521,7 @@ class IncrementalCalcEngine:
                 dependents.add(other_line)
         return dependents
 
-    def preview_line(self, line_text: str) -> LineResult | None:
+    def preview_line(self, line_text: str) -> Optional[LineResult]:
         """预览单行计算结果（不修改状态）
         
         Creates a temporary calculator state, evaluates the line, and

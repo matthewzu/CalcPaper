@@ -5,6 +5,8 @@ Configures Hypothesis settings for property-based testing with a minimum
 of 100 iterations per test, as specified in the design document.
 """
 
+from __future__ import annotations
+
 from hypothesis import settings, HealthCheck
 
 # Register a custom Hypothesis profile for CalcPaper property tests

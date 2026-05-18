@@ -5,6 +5,8 @@
 提供与标准 Tkinter Text 组件兼容的接口。
 """
 
+from __future__ import annotations
+
 import tkinter as tk
 import customtkinter as ctk
 

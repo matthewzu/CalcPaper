@@ -8,6 +8,8 @@ Note: GUI-dependent tests (rendering, scrollbar) require a Tk root and are
 tested separately. These tests focus on the data layer logic.
 """
 
+from __future__ import annotations
+
 import sys
 import os
 import tkinter as tk

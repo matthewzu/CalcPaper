@@ -11,7 +11,17 @@ Usage:
     CalcPaper --version    # Show version
 """
 
+from __future__ import annotations
+
 import sys
+
+# Python version check - require 3.7+
+if sys.version_info < (3, 7):
+    print("CalcPaper requires Python 3.7 or higher.")
+    print(f"Current version: {sys.version}")
+    print("Please upgrade Python: https://www.python.org/downloads/")
+    sys.exit(1)
+
 import argparse
 from version import VERSION
 

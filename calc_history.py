@@ -14,12 +14,15 @@ the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 """
 
+from __future__ import annotations
+
 import os
 import subprocess
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +41,15 @@ class DiffLine:
     """A single line in a diff result."""
     type: str  # 'add', 'delete', 'context'
     content: str
-    old_line_no: int | None
-    new_line_no: int | None
+    old_line_no: Optional[int]
+    new_line_no: Optional[int]
 
 
 @dataclass
 class DiffResult:
     """The diff between a commit and its parent."""
     commit_hash: str
-    parent_hash: str | None
+    parent_hash: Optional[str]
     lines: list[DiffLine] = field(default_factory=list)
 
 
@@ -66,7 +69,7 @@ class GitHistoryStore:
         """
         self._repo_path = Path(os.path.expanduser(repo_path))
         self._git_available = False
-        self._warning_message: str | None = None
+        self._warning_message: Optional[str] = None
         self._memory_history: list[HistoryEntry] = []
         self._memory_snapshots: dict[str, tuple[str, str]] = {}  # commit_hash -> (input, output)
         self._memory_counter = 0
@@ -90,7 +93,7 @@ class GitHistoryStore:
         return self._git_available
 
     @property
-    def warning_message(self) -> str | None:
+    def warning_message(self) -> Optional[str]:
         """Get the warning message if Git is not available.
 
         Returns:
@@ -99,7 +102,7 @@ class GitHistoryStore:
         return self._warning_message
 
     def commit(self, session_id: str, input_text: str, output_text: str,
-               message: str = None) -> str | None:
+               message: str = None) -> Optional[str]:
         """Commit a calculation snapshot.
 
         Saves input as session.txt and output as output.txt in a session
@@ -251,7 +254,7 @@ class GitHistoryStore:
     # -------------------------------------------------------------------------
 
     def _git_commit(self, session_id: str, input_text: str, output_text: str,
-                    message: str, timestamp: datetime) -> str | None:
+                    message: str, timestamp: datetime) -> Optional[str]:
         """Create a Git commit with the session content."""
         try:
             # Create session subdirectory

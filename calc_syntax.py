@@ -8,8 +8,11 @@ Supports highlighting: comments, variables, numbers, operators, functions,
 datetime literals, global variables, errors, results, and bitmap displays.
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -302,7 +305,7 @@ class SyntaxHighlighter:
             return True
         return False
 
-    def _find_comment_pos(self, line: str) -> int | None:
+    def _find_comment_pos(self, line: str) -> Optional[int]:
         """Find the position of an inline comment (# not inside a string)."""
         # Simple approach: find # that's not part of a hex literal
         for i, ch in enumerate(line):
