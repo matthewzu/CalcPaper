@@ -39,6 +39,8 @@ except ImportError:
     sys.exit(1)
 
 from calc_paper import CalculatorPaperAdvanced
+from calc_session import SessionManager, GlobalVariableStore, Session
+from calc_history import GitHistoryStore
 from version import VERSION
 
 # Config file path
@@ -336,7 +338,18 @@ class CalculatorGUIAdvanced:
         self.load_config()
         self.update_title()
 
-        # Create calculator instance
+        # Multi-session management
+        self.global_store = GlobalVariableStore()
+        self.session_manager = SessionManager(self.global_store)
+        self._current_session_id = None
+
+        # Git history store
+        self.history_store = GitHistoryStore()
+
+        # Subscribe to global variable changes
+        self.global_store.subscribe(self._on_global_variable_changed)
+
+        # Create calculator instance (will be replaced per-session)
         self.calculator = CalculatorPaperAdvanced(language=self.language)
 
         # GUI-specific history
@@ -349,6 +362,13 @@ class CalculatorGUIAdvanced:
 
         # Bind shortcuts
         self.bind_shortcuts()
+
+        # Bind multi-session shortcuts
+        self.root.bind('<Control-t>', lambda e: self._new_session_tab())
+        self.root.bind('<Control-T>', lambda e: self._new_session_tab())
+        self.root.bind('<Control-w>', lambda e: self._close_current_session_tab())
+        self.root.bind('<Control-W>', lambda e: self._close_current_session_tab())
+        self.root.bind('<Control-Tab>', lambda e: self._switch_next_session_tab())
 
         # Bind window resize event
         self.root.bind('<Configure>', self.on_window_configure)
@@ -377,6 +397,15 @@ class CalculatorGUIAdvanced:
 
         # Start background update check (2 second delay)
         self.root.after(2000, self._start_update_check)
+
+        # Show Git warning if not available
+        if self.history_store.warning_message:
+            self.root.after(500, lambda: self._toast(
+                "⚠ Git 未安装，请安装以启用历史功能: git-scm.com/downloads"
+                if self.language == 'zh' else
+                "⚠ Git not found. Install Git for history: git-scm.com/downloads",
+                duration=8000
+            ))
 
     # ==================== Dialog Focus Management ====================
 
@@ -537,61 +566,69 @@ class CalculatorGUIAdvanced:
     # ==================== Session Persistence ====================
 
     def save_session(self):
+        """Save all sessions using SessionManager (version 2 format)."""
         try:
-            input_content = self.input_text.get("1.0", "end-1c")
-            output_content = self.output_text.get("1.0", "end-1c")
-            session = {
-                'input': input_content,
-                'output': output_content,
-            }
-            os.makedirs(self.data_dir, exist_ok=True)
-            with open(self.session_file, 'w', encoding='utf-8') as f:
-                json.dump(session, f, ensure_ascii=False, indent=2)
+            # Save current session state before persisting
+            self._save_current_session_state()
+            self.session_manager.save_all(self.session_file)
         except Exception:
             pass
 
     def load_session(self):
+        """Load sessions using SessionManager. Returns True if sessions were loaded."""
         try:
-            if os.path.exists(self.session_file):
-                with open(self.session_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+            self.session_manager.load_all(self.session_file)
+            return True
         except Exception:
+            return False
+
+    def _save_current_session_state(self):
+        """Save the current editor content to the active session object."""
+        if self._current_session_id is None:
+            return
+        try:
+            session = self.session_manager.get_session(self._current_session_id)
+            session.input_text = self.input_text.get("1.0", "end-1c")
+            session.output_text = self.output_text.get("1.0", "end-1c")
+            session.variables = dict(session.calculator.variables) if hasattr(session.calculator, 'variables') else {}
+        except (KeyError, Exception):
             pass
-        return None
 
     def _restore_session_and_init(self):
-        session = self.load_session()
-        if session:
-            input_content = session.get('input', '')
-            output_content = session.get('output', '')
-            if input_content:
-                self.input_text.unbind('<<Modified>>')
-                self.input_text.delete("1.0", tk.END)
-                self.input_text.insert("1.0", input_content)
-                self.input_text.bind('<<Modified>>', self.on_input_modified)
-            if output_content:
-                self.output_text.configure(state=tk.NORMAL)
-                self.output_text.delete("1.0", tk.END)
-                self.output_text.insert("1.0", output_content)
-                self.apply_syntax_highlighting()
-                self.output_text.configure(state=tk.DISABLED)
-            self.last_saved_input = input_content
+        """Restore sessions from file and initialize the UI."""
+        loaded = self.load_session()
 
-            # Re-run calculation silently to populate variables
-            if input_content.strip():
-                try:
-                    self.calculator = CalculatorPaperAdvanced(language=self.language)
-                    self.calculator.process_text(input_content)
-                    self._refresh_variables_tab()
-                except Exception:
-                    pass
+        # Ensure at least one session exists
+        sessions = self.session_manager.list_sessions()
+        if not sessions:
+            self.session_manager.create_session()
+            sessions = self.session_manager.list_sessions()
 
+        # Build session tab bar
+        self._rebuild_session_tabs()
+
+        # Activate the saved active tab
+        active_idx = self.session_manager.active_tab_index
+        if active_idx < len(sessions):
+            self._activate_session(sessions[active_idx].session_id)
+        else:
+            self._activate_session(sessions[0].session_id)
+
+        # Save initial GUI state
         input_c = self.input_text.get("1.0", "end-1c")
         output_c = self.output_text.get("1.0", "end-1c")
         self.save_gui_state(input_c, output_c)
 
     def on_close(self):
         self.save_config()
+        # Save current session state and persist all sessions
+        self._save_current_session_state()
+        # Update active tab index
+        sessions = self.session_manager.list_sessions()
+        for i, s in enumerate(sessions):
+            if s.session_id == self._current_session_id:
+                self.session_manager.active_tab_index = i
+                break
         self.save_session()
         self.root.destroy()
 
@@ -843,6 +880,347 @@ class CalculatorGUIAdvanced:
             self.undo_button.configure(state=tk.DISABLED)
             self.redo_button.configure(state=tk.DISABLED)
 
+    # ==================== Multi-Session Tab Management ====================
+
+    def _rebuild_session_tabs(self):
+        """Rebuild the session tab bar from the SessionManager state."""
+        # Clear existing tab buttons
+        for widget in self._session_tab_frame.winfo_children():
+            widget.destroy()
+        self._session_tab_buttons.clear()
+
+        sessions = self.session_manager.list_sessions()
+        for session in sessions:
+            self._add_session_tab_button(session)
+
+        # Add "+" button for new tab
+        add_btn = ctk.CTkButton(
+            self._session_tab_frame, text="+", width=28, height=26,
+            command=self._new_session_tab,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="transparent", hover_color=("gray80", "gray30"),
+            text_color=("gray30", "gray70")
+        )
+        add_btn.pack(side=tk.LEFT, padx=(4, 0))
+
+    def _add_session_tab_button(self, session):
+        """Add a single session tab button to the tab bar."""
+        btn_frame = ctk.CTkFrame(self._session_tab_frame, fg_color="transparent", height=28)
+        btn_frame.pack(side=tk.LEFT, padx=(0, 1))
+
+        # Tab name button (double-click to rename, drag to reorder)
+        is_active = (session.session_id == self._current_session_id)
+        fg = ("gray75", "gray35") if is_active else "transparent"
+        tab_btn = ctk.CTkButton(
+            btn_frame, text=session.name, height=26, width=80,
+            command=lambda sid=session.session_id: self._switch_session_tab(sid),
+            font=ctk.CTkFont(size=11, weight="bold" if is_active else "normal"),
+            fg_color=fg, hover_color=("gray80", "gray30"),
+            text_color=("gray10", "gray90"),
+            corner_radius=6
+        )
+        tab_btn.pack(side=tk.LEFT)
+
+        # Bind double-click for rename
+        tab_btn.bind("<Double-Button-1>", lambda e, sid=session.session_id: self._rename_session_tab(sid))
+
+        # Bind drag for reorder
+        tab_btn.bind("<ButtonPress-1>", lambda e, sid=session.session_id: self._drag_start(e, sid))
+        tab_btn.bind("<B1-Motion>", self._drag_motion)
+        tab_btn.bind("<ButtonRelease-1>", self._drag_end)
+
+        # Close button (×)
+        close_btn = ctk.CTkButton(
+            btn_frame, text="×", width=20, height=20,
+            command=lambda sid=session.session_id: self._close_session_tab(sid),
+            font=ctk.CTkFont(size=12),
+            fg_color="transparent", hover_color=("gray80", "gray30"),
+            text_color=("gray50", "gray60"),
+            corner_radius=4
+        )
+        close_btn.pack(side=tk.LEFT, padx=(0, 2))
+
+        self._session_tab_buttons[session.session_id] = btn_frame
+
+    def _new_session_tab(self):
+        """Create a new session tab."""
+        # Save current session state first
+        self._save_current_session_state()
+
+        # Create new session
+        session = self.session_manager.create_session()
+
+        # Rebuild tabs and activate the new one
+        self._rebuild_session_tabs()
+        self._activate_session(session.session_id)
+
+        msg = f"New tab: {session.name}" if self.language == 'en' else f"新标签: {session.name}"
+        self._toast(msg)
+
+    def _close_session_tab(self, session_id):
+        """Close a session tab."""
+        # Save current state if closing the active tab
+        if session_id == self._current_session_id:
+            self._save_current_session_state()
+
+        # Close the session (auto-creates new blank if last)
+        self.session_manager.close_session(session_id)
+
+        # Determine which session to activate
+        sessions = self.session_manager.list_sessions()
+        if sessions:
+            # If we closed the active tab, activate the one at the adjusted index
+            if session_id == self._current_session_id:
+                active_idx = self.session_manager.active_tab_index
+                self._current_session_id = None  # Reset before activating
+                self._rebuild_session_tabs()
+                self._activate_session(sessions[active_idx].session_id)
+            else:
+                self._rebuild_session_tabs()
+
+    def _close_current_session_tab(self):
+        """Close the currently active session tab (Ctrl+W)."""
+        if self._current_session_id:
+            self._close_session_tab(self._current_session_id)
+
+    def _switch_session_tab(self, session_id):
+        """Switch to a specific session tab."""
+        if session_id == self._current_session_id:
+            return
+        self._save_current_session_state()
+        self._activate_session(session_id)
+
+    def _switch_next_session_tab(self):
+        """Switch to the next session tab (Ctrl+Tab)."""
+        sessions = self.session_manager.list_sessions()
+        if len(sessions) <= 1:
+            return
+        current_idx = 0
+        for i, s in enumerate(sessions):
+            if s.session_id == self._current_session_id:
+                current_idx = i
+                break
+        next_idx = (current_idx + 1) % len(sessions)
+        self._switch_session_tab(sessions[next_idx].session_id)
+
+    def _rename_session_tab(self, session_id):
+        """Rename a session tab via inline editing (double-click)."""
+        try:
+            session = self.session_manager.get_session(session_id)
+        except KeyError:
+            return
+
+        btn_frame = self._session_tab_buttons.get(session_id)
+        if not btn_frame:
+            return
+
+        # Replace the tab button with an entry widget for inline editing
+        for child in btn_frame.winfo_children():
+            child.pack_forget()
+
+        entry = ctk.CTkEntry(btn_frame, width=80, height=26,
+                             font=ctk.CTkFont(size=11))
+        entry.pack(side=tk.LEFT)
+        entry.insert(0, session.name)
+        entry.select_range(0, tk.END)
+        entry.focus_set()
+
+        def _confirm(event=None):
+            new_name = entry.get().strip()
+            if new_name:
+                session.name = new_name
+            self._rebuild_session_tabs()
+
+        def _cancel(event=None):
+            self._rebuild_session_tabs()
+
+        entry.bind("<Return>", _confirm)
+        entry.bind("<Escape>", _cancel)
+        entry.bind("<FocusOut>", _confirm)
+
+    def _drag_start(self, event, session_id):
+        """Start dragging a session tab."""
+        self._drag_session_id = session_id
+        self._drag_start_x = event.x_root
+        self._drag_moved = False
+        self._drag_indicator = None
+
+    def _drag_motion(self, event):
+        """Track drag motion and show drop position indicator."""
+        if not hasattr(self, '_drag_session_id') or not self._drag_session_id:
+            return
+        dx = abs(event.x_root - self._drag_start_x)
+        if dx > 10:
+            self._drag_moved = True
+            self._update_drag_indicator(event.x_root)
+
+    def _update_drag_indicator(self, drop_x):
+        """Show a visual indicator (vertical line) at the drop position."""
+        # Remove old indicator
+        if self._drag_indicator:
+            try:
+                self._drag_indicator.destroy()
+            except Exception:
+                pass
+            self._drag_indicator = None
+
+        insert_x = self._get_drop_indicator_x(drop_x)
+
+        # Draw indicator line
+        self._drag_indicator = tk.Frame(
+            self._session_tab_frame, width=3, height=24,
+            bg="#2563EB", relief=tk.FLAT
+        )
+        self._drag_indicator.place(x=insert_x - 1, y=2)
+
+    def _drag_end(self, event):
+        """End drag and reorder tabs if moved far enough."""
+        # Remove indicator
+        if hasattr(self, '_drag_indicator') and self._drag_indicator:
+            try:
+                self._drag_indicator.destroy()
+            except Exception:
+                pass
+            self._drag_indicator = None
+
+        if not hasattr(self, '_drag_session_id') or not self._drag_session_id:
+            return
+        if not self._drag_moved:
+            self._drag_session_id = None
+            return
+
+        # Determine drop position
+        sessions = self.session_manager.list_sessions()
+        source_id = self._drag_session_id
+        self._drag_session_id = None
+
+        # Find source index
+        source_idx = None
+        for i, s in enumerate(sessions):
+            if s.session_id == source_id:
+                source_idx = i
+                break
+        if source_idx is None:
+            return
+
+        # Find target index using ordered tab positions
+        target_idx = self._get_drop_target_index(event.x_root)
+
+        # Perform reorder with proper index adjustment
+        if source_idx != target_idx:
+            order = self.session_manager._session_order
+            sid = order.pop(source_idx)
+            # Adjust target if source was before target (removal shifts indices)
+            if source_idx < target_idx:
+                target_idx = min(target_idx - 1, len(order))
+            order.insert(target_idx, sid)
+            self._rebuild_session_tabs()
+
+    def _get_drop_target_index(self, drop_x):
+        """Calculate the target insertion index based on drop x position.
+
+        Iterates tabs in display order (matching session_order) to find
+        where the dragged tab should be inserted.
+        """
+        sessions = self.session_manager.list_sessions()
+        for i, s in enumerate(sessions):
+            btn_frame = self._session_tab_buttons.get(s.session_id)
+            if btn_frame:
+                try:
+                    frame_x = btn_frame.winfo_rootx()
+                    frame_w = btn_frame.winfo_width()
+                    frame_mid = frame_x + frame_w // 2
+                    if drop_x < frame_mid:
+                        return i
+                except Exception:
+                    continue
+        return len(sessions) - 1
+
+    def _get_drop_indicator_x(self, drop_x):
+        """Calculate the x position for the drop indicator line.
+
+        Returns the local x coordinate within _session_tab_frame.
+        """
+        sessions = self.session_manager.list_sessions()
+        frame_root_x = self._session_tab_frame.winfo_rootx()
+
+        for i, s in enumerate(sessions):
+            btn_frame = self._session_tab_buttons.get(s.session_id)
+            if btn_frame:
+                try:
+                    bx = btn_frame.winfo_rootx()
+                    bw = btn_frame.winfo_width()
+                    mid = bx + bw // 2
+                    if drop_x < mid:
+                        return bx - frame_root_x
+                except Exception:
+                    continue
+
+        # After last tab
+        if sessions:
+            btn_frame = self._session_tab_buttons.get(sessions[-1].session_id)
+            if btn_frame:
+                try:
+                    return btn_frame.winfo_rootx() + btn_frame.winfo_width() - frame_root_x
+                except Exception:
+                    pass
+        return 0
+
+    def _activate_session(self, session_id):
+        """Activate a session: load its content into the editor."""
+        try:
+            session = self.session_manager.get_session(session_id)
+        except KeyError:
+            return
+
+        self._current_session_id = session_id
+        self.calculator = session.calculator
+
+        # Update active tab index in session manager
+        sessions = self.session_manager.list_sessions()
+        for i, s in enumerate(sessions):
+            if s.session_id == session_id:
+                self.session_manager.active_tab_index = i
+                break
+
+        # Load input text
+        self.input_text.unbind('<<Modified>>')
+        self.input_text.delete("1.0", tk.END)
+        if session.input_text:
+            self.input_text.insert("1.0", session.input_text)
+        self.input_text.bind('<<Modified>>', self.on_input_modified)
+
+        # Load output text
+        self.output_text.configure(state=tk.NORMAL)
+        self.output_text.delete("1.0", tk.END)
+        if session.output_text:
+            self.output_text.insert("1.0", session.output_text)
+            self.apply_syntax_highlighting()
+        self.output_text.configure(state=tk.DISABLED)
+
+        self.last_saved_input = session.input_text
+
+        # Re-run calculation silently to populate variables if needed
+        if session.input_text.strip() and not session.calculator.variables:
+            try:
+                session.calculator = CalculatorPaperAdvanced(language=self.language)
+                # Inject global variables
+                for name, value in self.global_store.get_all().items():
+                    session.calculator.variables[name] = value
+                session.calculator.process_text(session.input_text)
+                self.calculator = session.calculator
+                session.variables = dict(session.calculator.variables)
+            except Exception:
+                pass
+
+        # Refresh UI
+        self._rebuild_session_tabs()
+        self._refresh_variables_tab()
+
+    def _on_global_variable_changed(self, name, value):
+        """Callback when a global variable changes. Refresh all tabs' variable panels."""
+        self._refresh_variables_tab()
+
     def update_initial_font_display(self):
         if hasattr(self, 'font_size_label'):
             self.font_size_label.configure(text=f"{self.font_size}")
@@ -898,10 +1276,33 @@ class CalculatorGUIAdvanced:
         if hasattr(self, 'calculator') and hasattr(self.calculator, 'variables'):
             variables = self.calculator.variables
 
+        # Get global variables
+        global_vars = self.global_store.get_all() if hasattr(self, 'global_store') else {}
+
+        # Get current session name
+        session_name = ""
+        if self._current_session_id:
+            try:
+                session = self.session_manager.get_session(self._current_session_id)
+                session_name = session.name
+            except KeyError:
+                pass
+
         self.vars_text.configure(state=tk.NORMAL)
         self.vars_text.delete("1.0", tk.END)
+
+        has_content = False
+
+        # Show session name header
+        if session_name:
+            tab_header = f"📄 {session_name}\n" if self.language == 'en' else f"📄 {session_name}\n"
+            self.vars_text.insert(tk.END, tab_header)
+            self.vars_text.insert(tk.END, "═" * 44 + "\n\n")
+
+        # Local variables section
         if variables:
-            header = "Variable            Value\n" if self.language == 'en' else "变量名              值\n"
+            has_content = True
+            header = "Local Variables\n" if self.language == 'en' else "局部变量\n"
             self.vars_text.insert(tk.END, header)
             self.vars_text.insert(tk.END, "─" * 44 + "\n")
             for name, val in variables.items():
@@ -914,7 +1315,27 @@ class CalculatorGUIAdvanced:
                 else:
                     display = str(val)
                 self.vars_text.insert(tk.END, f"{name:<20}{display}\n")
-        else:
+
+        # Global variables section
+        if global_vars:
+            has_content = True
+            if variables:
+                self.vars_text.insert(tk.END, "\n")
+            header = "🌐 Global Variables (全局变量)\n" if self.language == 'en' else "🌐 全局变量\n"
+            self.vars_text.insert(tk.END, header)
+            self.vars_text.insert(tk.END, "─" * 44 + "\n")
+            for name, val in global_vars.items():
+                if isinstance(val, datetime.date) and not isinstance(val, datetime.datetime):
+                    display = val.strftime("Y%Y%m%d") + f"  ({val.strftime('%Y-%m-%d')})"
+                elif isinstance(val, datetime.time):
+                    display = val.strftime("T%H%M%S") + f"  ({val.strftime('%H:%M:%S')})"
+                elif isinstance(val, int) and (val > 255 or val < 0):
+                    display = f"{val}  (0x{val & 0xFFFFFFFFFFFFFFFF:X})"
+                else:
+                    display = str(val)
+                self.vars_text.insert(tk.END, f"🌐 {name:<17}{display}\n")
+
+        if not has_content:
             hint = "No variables defined yet.\nRun a calculation to see variables here." if self.language == 'en' \
                 else "暂无变量。\n运行计算后变量会显示在这里。"
             self.vars_text.insert(tk.END, hint)
@@ -933,6 +1354,23 @@ class CalculatorGUIAdvanced:
         self.history_text.tag_config("header", foreground="#569CD6", font=("Consolas", self.font_size, "bold"))
         self.history_text.tag_config("result", foreground="#6A9955")
         self.history_text.tag_config("current_marker", foreground="#DCDCAA", font=("Consolas", self.font_size, "bold"))
+        self.history_text.tag_config("tab_name", foreground="#C586C0", font=("Consolas", self.font_size, "bold"))
+
+        # Get current session name
+        session_name = ""
+        if self._current_session_id:
+            try:
+                session = self.session_manager.get_session(self._current_session_id)
+                session_name = session.name
+            except KeyError:
+                pass
+
+        # Show session name header
+        if session_name:
+            self.history_text.insert(tk.END, f"📄 {session_name} ", "tab_name")
+            label = "History" if self.language == 'en' else "的修改记录"
+            self.history_text.insert(tk.END, f"{label}\n")
+            self.history_text.insert(tk.END, "═" * 44 + "\n\n")
 
         if self.gui_history and len(self.gui_history) > 1:
             count = 0
@@ -1102,19 +1540,24 @@ class CalculatorGUIAdvanced:
         editor_tab = self.tabview.tab(editor_tab_name)
         editor_tab.grid_columnconfigure(0, weight=1)
         editor_tab.grid_columnconfigure(1, weight=1)
-        editor_tab.grid_rowconfigure(1, weight=1)
+        editor_tab.grid_rowconfigure(2, weight=1)
+
+        # ===== Session Tab Bar (within Editor tab) =====
+        self._session_tab_frame = ctk.CTkFrame(editor_tab, height=32, fg_color="transparent")
+        self._session_tab_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 2))
+        self._session_tab_buttons = {}  # session_id -> button widget
 
         self.input_label = ctk.CTkLabel(editor_tab, text="Input:" if self.language == 'en' else "输入:",
                                          font=ctk.CTkFont(size=12, weight="bold"))
-        self.input_label.grid(row=0, column=0, sticky="w", padx=(4, 5), pady=(0, 2))
+        self.input_label.grid(row=1, column=0, sticky="w", padx=(4, 5), pady=(0, 2))
 
         self.output_label = ctk.CTkLabel(editor_tab, text="Output:" if self.language == 'en' else "输出:",
                                           font=ctk.CTkFont(size=12, weight="bold"))
-        self.output_label.grid(row=0, column=1, sticky="w", padx=(5, 4), pady=(0, 2))
+        self.output_label.grid(row=1, column=1, sticky="w", padx=(5, 4), pady=(0, 2))
 
         # Input text area
         input_container = ctk.CTkFrame(editor_tab, corner_radius=8)
-        input_container.grid(row=1, column=0, sticky="nsew", padx=(4, 4))
+        input_container.grid(row=2, column=0, sticky="nsew", padx=(4, 4))
         input_container.grid_rowconfigure(0, weight=1)
         input_container.grid_columnconfigure(0, weight=1)
 
@@ -1127,7 +1570,7 @@ class CalculatorGUIAdvanced:
 
         # Output text area
         output_container = ctk.CTkFrame(editor_tab, corner_radius=8)
-        output_container.grid(row=1, column=1, sticky="nsew", padx=(4, 4))
+        output_container.grid(row=2, column=1, sticky="nsew", padx=(4, 4))
         output_container.grid_rowconfigure(0, weight=1)
         output_container.grid_columnconfigure(0, weight=1)
 
@@ -1399,9 +1842,18 @@ class CalculatorGUIAdvanced:
                 self.status_var.set("Please enter calculation content" if self.language == 'en' else "请输入计算内容")
                 return
 
+            # Use the current session's calculator
             self.calculator = CalculatorPaperAdvanced(language=self.language)
+
+            # Inject global variables (lower priority than local)
+            for name, value in self.global_store.get_all().items():
+                self.calculator.variables[name] = value
+
             self.calculator.process_text(input_content)
             output = self.calculator.format_output()
+
+            # Check for global() function calls and update global store
+            self._process_global_declarations(input_content)
 
             self.output_text.configure(state=tk.NORMAL)
             self.output_text.delete("1.0", tk.END)
@@ -1413,6 +1865,16 @@ class CalculatorGUIAdvanced:
             self.save_gui_state(input_content, output)
             self.last_saved_input = input_content
             self.update_undo_redo_buttons()
+
+            # Update current session's calculator reference
+            if self._current_session_id:
+                try:
+                    session = self.session_manager.get_session(self._current_session_id)
+                    session.calculator = self.calculator
+                    session.variables = dict(self.calculator.variables)
+                except KeyError:
+                    pass
+
             self._refresh_variables_tab()
             self._refresh_history_tab()
 
@@ -1420,6 +1882,16 @@ class CalculatorGUIAdvanced:
             title = "Error" if self.language == 'en' else "错误"
             messagebox.showerror(title, str(e))
             self.status_var.set(f"Error: {e}" if self.language == 'en' else f"错误: {e}")
+
+    def _process_global_declarations(self, input_content):
+        """Process global() function calls and update the global variable store."""
+        import re
+        # Match global(variable_name) calls
+        pattern = re.compile(r'\bglobal\s*\(\s*([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*\)')
+        matches = pattern.findall(input_content)
+        for var_name in matches:
+            if var_name in self.calculator.variables:
+                self.global_store.set(var_name, self.calculator.variables[var_name])
 
     def apply_syntax_highlighting(self):
         for tag in self.output_text.tag_names():
@@ -1966,6 +2438,9 @@ comma(1234567)
   Ctrl+D        Clear
   Ctrl+Z        Undo
   Ctrl+Y        Redo
+  Ctrl+T        New tab
+  Ctrl+W        Close tab
+  Ctrl+Tab      Switch tab
   Ctrl+L        Load example
   Ctrl+O        Open file
   Ctrl+S        Save result
@@ -1973,6 +2448,20 @@ comma(1234567)
   Ctrl+-        Font decrease
   F1            Help
   Tab           Autocomplete confirm
+
+=== Multi-Session Tabs ===
+  - Each tab has its own independent variables and calculator
+  - Double-click tab name to rename
+  - Drag tabs to reorder
+  - global(var_name) declares a variable shared across all tabs
+  - Variables tab shows current tab name and distinguishes local/global vars
+  - History tab shows only the current tab's calculation history
+
+=== Auto Output Format ===
+  - Expression with 0x literal -> result in hex (e.g. 0xFF + 1 = 0x100)
+  - Expression with 0b literal -> result in binary (e.g. 0b1010 + 1 = 0b1011)
+  - Both hex and binary -> hex takes priority
+  - Explicit hex() function always takes priority
 
 === Autocomplete ===
   Type a variable name prefix -> popup appears
@@ -2063,6 +2552,9 @@ comma(1234567)
   Ctrl+D        清空
   Ctrl+Z        撤销
   Ctrl+Y        恢复
+  Ctrl+T        新建标签
+  Ctrl+W        关闭标签
+  Ctrl+Tab      切换标签
   Ctrl+L        加载示例
   Ctrl+O        打开文件
   Ctrl+S        保存结果
@@ -2070,6 +2562,20 @@ comma(1234567)
   Ctrl+-        缩小字体
   F1            帮助
   Tab           自动补全确认
+
+=== 多会话标签页 ===
+  - 每个标签页拥有独立的变量和计算引擎
+  - 双击标签名可重命名
+  - 拖动标签可改变顺序
+  - global(变量名) 声明跨标签页共享的全局变量
+  - 变量面板显示当前标签名，区分局部/全局变量
+  - 历史面板仅显示当前标签的修改记录
+
+=== 自动输出格式 ===
+  - 表达式含 0x 字面量 → 结果以十六进制输出（如 0xFF + 1 = 0x100）
+  - 表达式含 0b 字面量 → 结果以二进制输出（如 0b1010 + 1 = 0b1011）
+  - 同时含两者 → 十六进制优先
+  - 显式 hex() 函数始终优先
 
 === 自动补全 ===
   输入已定义的变量名前缀 -> 弹出候选列表
@@ -2084,8 +2590,9 @@ comma(1234567)
   - 启动时后台自动检查更新，点击"更新"按钮可手动检查
   - 支持浅色/深色/跟随系统外观模式（在设置中切换）
   - 数据目录默认为 ~/.calcpaper，可在设置中修改
-  - 变量面板显示计算后所有已定义变量
-  - 历史面板以彩色 diff 显示每次计算的变更
+  - 变量面板显示当前标签页的所有已定义变量
+  - 历史面板以彩色 diff 显示当前标签的计算变更
+  - 计算历史以 Git 仓库持久化（需安装 Git）
 """
 
 

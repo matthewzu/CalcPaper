@@ -29,8 +29,36 @@ import sys
 import argparse
 import datetime
 import calendar
+from enum import Enum
 
 from version import VERSION
+
+
+class OutputFormat(Enum):
+    """Output format for calculation results"""
+    DECIMAL = 'decimal'
+    HEXADECIMAL = 'hex'
+    BINARY = 'binary'
+
+
+def detect_output_format(expression: str, has_explicit_hex_func: bool) -> OutputFormat:
+    """根据表达式中的字面量自动检测输出格式
+    
+    Priority:
+    1. Explicit hex() function → HEXADECIMAL
+    2. Expression contains 0x literal → HEXADECIMAL
+    3. Expression contains 0b literal → BINARY
+    4. No special literals → DECIMAL
+    """
+    if has_explicit_hex_func:
+        return OutputFormat.HEXADECIMAL
+    has_hex = bool(re.search(r'0[xX][0-9a-fA-F]+', expression))
+    has_bin = bool(re.search(r'0[bB][01]+', expression))
+    if has_hex:
+        return OutputFormat.HEXADECIMAL
+    if has_bin:
+        return OutputFormat.BINARY
+    return OutputFormat.DECIMAL
 
 
 class CalculatorPaperAdvanced:
@@ -329,6 +357,20 @@ class CalculatorPaperAdvanced:
             # Generate comma display info
             if use_comma_func:
                 hex_info = self.format_comma_number(result)
+
+            # Auto-detect output format based on expression literals
+            if not use_hex_func and not use_comma_func and not use_bitmap:
+                output_format = detect_output_format(line, False)
+                if output_format == OutputFormat.HEXADECIMAL:
+                    if isinstance(result, (int, float)) and result >= 0:
+                        int_result = int(result)
+                        if int_result == result:
+                            hex_info = f"0x{int_result:X}"
+                elif output_format == OutputFormat.BINARY:
+                    if isinstance(result, (int, float)) and result >= 0:
+                        int_result = int(result)
+                        if int_result == result:
+                            hex_info = f"0b{int_result:b}"
 
             # Return result, label, substituted expression, bit info, bitmap flag, hex info
             return result, label, replaced_expr, bit_info, use_bitmap, hex_info
