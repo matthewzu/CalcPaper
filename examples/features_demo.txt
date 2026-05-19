@@ -1,4 +1,4 @@
-# CalcPaper v3.0 功能演示
+# CalcPaper v3.1 功能演示
 # Features Demo
 
 # ========================================
@@ -117,3 +117,30 @@ global(page_size)
 # Other tabs can use base and page_size directly
 # 局部变量优先于同名全局变量
 # Local variables take priority over globals with the same name
+
+# ========================================
+# 12. 自定义函数 / User-Defined Functions 🆕
+# ========================================
+# 定义函数 / Define a function
+func(x, y) = 3*x + 5*y * 2
+
+# 调用函数 / Call the function
+func(1, 2)
+
+# 隐式乘法 / Implicit multiplication
+f(x) = 3x + 1
+f(5)
+
+# 嵌套函数调用 / Nested function calls
+double(x) = 2*x
+quad(x) = double(double(x))
+quad(3)
+
+# 函数引用变量 / Function referencing variables
+offset = 100
+g(x) = x + offset
+g(5)
+
+# 函数结果赋值 / Assign function result
+area(r) = 3.14 * r * r
+circle = area(5)

@@ -63,6 +63,10 @@ _FUNCTION_NAMES = r'(?:hex|bitmap|comma|swap|workday|global)'
 _FUNCTION_PATTERN = re.compile(
     r'\b(' + _FUNCTION_NAMES + r')\s*\(', re.IGNORECASE
 )
+# User-defined function definition pattern: name(params) = body
+_USER_FUNC_DEF_PATTERN = re.compile(
+    r'^(\s*)([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*\(\s*([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*(?:\s*,\s*[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)*)\s*\)\s*='
+)
 _NUMBER_PATTERN = re.compile(
     r'0[xX][0-9a-fA-F]+|0[bB][01]+|\d+\.?\d*'
 )
@@ -193,21 +197,31 @@ class SyntaxHighlighter:
         # Detect assignment target (variable on left side of =)
         assignment_var = None
         assignment_end = 0
-        eq_match = re.match(
-            r'^(\s*)([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*=(?!=)',
-            active_line
-        )
-        if eq_match:
-            var_start = eq_match.start(2)
-            var_end = eq_match.end(2)
-            var_name = eq_match.group(2)
-            # Check if it's a global variable
-            if var_name in self._global_vars:
-                spans.append((var_start, var_end, 'global_var'))
-            else:
-                spans.append((var_start, var_end, 'variable'))
-            assignment_var = var_name
-            assignment_end = var_end
+
+        # Check for user-defined function definition: name(params) = body
+        func_def_match = _USER_FUNC_DEF_PATTERN.match(active_line)
+        if func_def_match:
+            # Highlight function name
+            func_start = func_def_match.start(2)
+            func_end = func_def_match.end(2)
+            spans.append((func_start, func_end, 'function'))
+            assignment_end = func_end
+        else:
+            eq_match = re.match(
+                r'^(\s*)([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*=(?!=)',
+                active_line
+            )
+            if eq_match:
+                var_start = eq_match.start(2)
+                var_end = eq_match.end(2)
+                var_name = eq_match.group(2)
+                # Check if it's a global variable
+                if var_name in self._global_vars:
+                    spans.append((var_start, var_end, 'global_var'))
+                else:
+                    spans.append((var_start, var_end, 'variable'))
+                assignment_var = var_name
+                assignment_end = var_end
 
         # Find functions
         for m in _FUNCTION_PATTERN.finditer(active_line):

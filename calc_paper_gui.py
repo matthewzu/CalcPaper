@@ -2428,6 +2428,17 @@ comma(1234567)
   comma(value)            Display with comma separators (e.g. 59,200)
   global(var_name)        Declare variable shared across all tabs
 
+=== User-Defined Functions ===
+  name(params) = expr     Define a function
+  name(args)              Call a function
+
+  Examples:
+    func(x, y) = 3*x + 5*y     Define with explicit multiplication
+    f(x) = 3x + 1              Implicit multiplication (3x = 3*x)
+    double(x) = 2*x            Single parameter
+    quad(x) = double(double(x)) Nested function calls
+    result = func(2, 3)        Assign function result to variable
+
 === Date/Time Arithmetic ===
   Yyyyymmdd               Date literal      e.g. Y20260410
   Thhmmss                 Time literal      e.g. T143000
@@ -2542,6 +2553,17 @@ comma(1234567)
   hex(数值)               显示16进制
   comma(数值)             千分位格式显示（如 59,200）
   global(变量名)          声明跨标签页共享的全局变量
+
+=== 自定义函数 ===
+  函数名(参数) = 表达式    定义函数
+  函数名(参数值)           调用函数
+
+  示例：
+    func(x, y) = 3*x + 5*y     显式乘法定义
+    f(x) = 3x + 1              隐式乘法（3x = 3*x）
+    double(x) = 2*x            单参数函数
+    quad(x) = double(double(x)) 嵌套函数调用
+    result = func(2, 3)        函数结果赋值给变量
 
 === 日期/时间运算 ===
   Yyyyymmdd               日期字面量      例: Y20260410

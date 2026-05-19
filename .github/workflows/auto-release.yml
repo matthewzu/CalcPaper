@@ -33,6 +33,12 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
+          ### 🆕 New in v3.1 / v3.1 新功能
+          - 🧮 User-defined functions: `f(x,y) = 3*x + 5*y` then `f(1,2)` / 自定义函数
+            - Implicit multiplication: `f(x) = 3x + 1` / 隐式乘法
+            - Nested calls: `quad(x) = double(double(x))` / 嵌套调用
+            - Function body can reference variables / 函数体可引用变量
+
           ### 🆕 New in v3.0 / v3.0 新功能
           - 📑 Multi-session tabs: independent calculator sessions / 多会话标签页
             - Ctrl+T new tab, Ctrl+W close, Ctrl+Tab switch / 快捷键操作
@@ -71,6 +77,7 @@ jobs:
 
           ### ✅ All Features / 全部功能
           - 🧮 Variable references / 变量引用
+          - 🧮 User-defined functions / 自定义函数 (implicit multiplication / 隐式乘法)
           - 🌐 global() cross-tab variable sharing / 跨标签全局变量
           - 🔢 Hex & Binary support / 16进制/2进制
           - ⚡ Bitwise operations / 位运算 (<<, >>, &, |, ^, ~)

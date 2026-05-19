@@ -68,6 +68,7 @@ class CalculatorPaperAdvanced:
         self.lines = []
         self.results = []
         self.variables = {}
+        self.functions = {}  # User-defined functions: {name: (params, body_expr)}
         self.bit_display_mode = None  # 'little' or 'big' or None
         self.language = language  # 'zh' or 'en'
         
@@ -194,6 +195,27 @@ class CalculatorPaperAdvanced:
                 return self.variables[var_name], None, None, None, False, None
             else:
                 return None, None, None, None, False, None
+
+        # Check for user-defined function definition: func(x, y) = expr
+        func_def_pattern = r'^([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*\(\s*([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*(?:\s*,\s*[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)*)\s*\)\s*=\s*(.+)$'
+        func_def_match = re.match(func_def_pattern, line)
+        if func_def_match:
+            func_name = func_def_match.group(1)
+            params_str = func_def_match.group(2)
+            body_expr = func_def_match.group(3).strip()
+            # Don't allow overriding built-in functions
+            if func_name.lower() in ('swap', 'bitmap', 'hex', 'comma', 'global', 'workday'):
+                err_msg = "函数名与内置函数冲突" if self.language == 'zh' else "Function name conflicts with built-in function"
+                return None, None, f"错误: {err_msg}", None, False, None
+            params = [p.strip() for p in params_str.split(',')]
+            # Check for duplicate parameter names
+            if len(params) != len(set(params)):
+                err_msg = "函数参数名重复" if self.language == 'zh' else "Duplicate parameter names"
+                return None, None, f"错误: {err_msg}", None, False, None
+            # Handle implicit multiplication in function body (e.g. 3x → 3*x)
+            body_expr = self._add_implicit_multiplication(body_expr)
+            self.functions[func_name] = (params, body_expr)
+            return None, None, None, None, False, None
 
         if hex_func_match:
             use_hex_func = True
@@ -334,9 +356,22 @@ class CalculatorPaperAdvanced:
             # Substitute variables
             expr_with_vars, undefined_vars = self._replace_variables(line, use_hex_format=use_hex_in_comment)
 
-            # If there are undefined variables, return error
+            # If there are undefined variables, check if they might be function calls
+            # before reporting error
             if undefined_vars:
-                return None, label, f"变量未定义: {', '.join(undefined_vars)}", None, False, None
+                # Check if any undefined var is actually a function name being called
+                remaining_undefined = [v for v in undefined_vars if v not in self.functions]
+                if remaining_undefined:
+                    return None, label, f"变量未定义: {', '.join(remaining_undefined)}", None, False, None
+
+            # Expand user-defined function calls
+            expr_with_vars = self._expand_function_calls(expr_with_vars)
+
+            # Second pass: substitute variables that may have been introduced by function expansion
+            if self.functions:
+                expr_with_vars, undefined_vars2 = self._replace_variables(expr_with_vars, use_hex_format=use_hex_in_comment)
+                if undefined_vars2:
+                    return None, label, f"变量未定义: {', '.join(undefined_vars2)}", None, False, None
 
             # Evaluate expression
             result = self.evaluate(expr_with_vars, has_hex_bin)
@@ -421,6 +456,9 @@ class CalculatorPaperAdvanced:
             # Skip placeholders and function names
             if var_name.startswith('__PROTECTED_') or var_name.lower() in ['swap', 'bitmap', 'hex', 'comma', 'global']:
                 return var_name
+            # Skip user-defined function names (they will be expanded later)
+            if var_name in self.functions:
+                return var_name
             # Skip date/time/duration literals (reserved keyword pattern)
             if self._is_reserved_keyword(var_name):
                 return var_name
@@ -456,6 +494,144 @@ class CalculatorPaperAdvanced:
             result = result.replace(f'__PROTECTED_{i}__', literal)
 
         return result, undefined_vars
+
+    def _expand_function_calls(self, expr):
+        """Expand user-defined function calls in the expression.
+        
+        e.g. if func(x,y) = 3*x + 5*y, then func(1, 2) → (3*1+5*2)
+        """
+        if not self.functions:
+            return expr
+        
+        max_iterations = 20  # Prevent infinite recursion
+        iteration = 0
+        
+        while iteration < max_iterations:
+            # Match function calls: name(arg1, arg2, ...)
+            # Need to handle nested parentheses in arguments
+            func_call_pattern = r'([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*\('
+            match = re.search(func_call_pattern, expr)
+            if not match:
+                break
+            
+            func_name = match.group(1)
+            
+            # Skip built-in functions
+            if func_name.lower() in ('swap', 'bitmap', 'hex', 'comma', 'global', 'workday'):
+                # Skip past this match and continue searching
+                # Find the closing paren to skip the whole call
+                depth = 1
+                i = match.end()
+                while i < len(expr) and depth > 0:
+                    if expr[i] == '(':
+                        depth += 1
+                    elif expr[i] == ')':
+                        depth -= 1
+                    i += 1
+                # Can't expand further in this simple pass, break
+                break
+            
+            if func_name not in self.functions:
+                break
+            
+            # Find the matching closing parenthesis
+            start_paren = match.end() - 1  # position of '('
+            depth = 1
+            pos = match.end()
+            while pos < len(expr) and depth > 0:
+                if expr[pos] == '(':
+                    depth += 1
+                elif expr[pos] == ')':
+                    depth -= 1
+                pos += 1
+            
+            if depth != 0:
+                break  # Unmatched parentheses
+            
+            # Extract arguments string (between the parentheses)
+            args_str = expr[match.end():pos - 1]
+            
+            # Split arguments by comma, respecting nested parentheses
+            args = []
+            current_arg = ''
+            depth = 0
+            for ch in args_str:
+                if ch == '(' :
+                    depth += 1
+                    current_arg += ch
+                elif ch == ')':
+                    depth -= 1
+                    current_arg += ch
+                elif ch == ',' and depth == 0:
+                    args.append(current_arg.strip())
+                    current_arg = ''
+                else:
+                    current_arg += ch
+            if current_arg.strip():
+                args.append(current_arg.strip())
+            
+            params, body = self.functions[func_name]
+            
+            if len(args) != len(params):
+                err_msg = f"函数 {func_name} 需要 {len(params)} 个参数，但传入了 {len(args)} 个" if self.language == 'zh' else f"Function {func_name} expects {len(params)} arguments, got {len(args)}"
+                raise ValueError(err_msg)
+            
+            # Substitute parameters in body with argument values
+            expanded = body
+            # Replace parameters with argument values (wrap args in parens for safety)
+            # Sort params by length descending to avoid partial replacement
+            param_arg_pairs = sorted(zip(params, args), key=lambda x: len(x[0]), reverse=True)
+            for param, arg in param_arg_pairs:
+                # Use word boundary replacement to avoid partial matches
+                expanded = re.sub(
+                    r'(?<![a-zA-Z0-9_\u4e00-\u9fa5])' + re.escape(param) + r'(?![a-zA-Z0-9_\u4e00-\u9fa5])',
+                    f'({arg})',
+                    expanded
+                )
+            
+            # Handle implicit multiplication in expanded body (e.g. 3(1) → 3*(1))
+            expanded = self._add_implicit_multiplication(expanded)
+            
+            # Replace the function call in the expression with the expanded body (wrapped in parens)
+            expr = expr[:match.start()] + '(' + expanded + ')' + expr[pos:]
+            iteration += 1
+        
+        return expr
+
+    def _add_implicit_multiplication(self, expr):
+        """Add explicit multiplication operators where implicit multiplication is used.
+        
+        Handles patterns like:
+        - 3(x) → 3*(x)
+        - (x)(y) → (x)*(y)
+        - 2x → 2*x (number followed by variable)
+        """
+        # Protect hex and binary literals first
+        hex_bin_pattern = r'0[xXbB][0-9a-fA-F]+'
+        protected = []
+        
+        def protect(match):
+            protected.append(match.group(0))
+            # Use a placeholder that won't trigger implicit mult rules
+            return f'\x00IMPL{len(protected)-1}\x00'
+        
+        expr = re.sub(hex_bin_pattern, protect, expr)
+        
+        # Number followed by opening paren: 3( → 3*(
+        expr = re.sub(r'(\d)\s*\(', r'\1*(', expr)
+        # Closing paren followed by opening paren: )( → )*(
+        expr = re.sub(r'\)\s*\(', r')*(', expr)
+        # Number followed by variable: 3x → 3*x
+        expr = re.sub(r'(\d)([a-zA-Z_\u4e00-\u9fa5])', r'\1*\2', expr)
+        # Closing paren followed by number or variable: )2 → )*2, )x → )*x
+        expr = re.sub(r'\)\s*(\d)', r')*\1', expr)
+        expr = re.sub(r'\)\s*([a-zA-Z_\u4e00-\u9fa5])', r')*\1', expr)
+        
+        # Restore protected literals
+        for i, literal in enumerate(protected):
+            expr = expr.replace(f'\x00IMPL{i}\x00', literal)
+        
+        return expr
 
     def _convert_percentage(self, expression):
         """Convert percentages to decimals"""
@@ -1144,6 +1320,7 @@ class CalculatorPaperAdvanced:
         self.lines = []
         self.results = []
         self.variables = dict(preset_variables) if preset_variables else {}
+        self.functions = {}  # Reset user-defined functions
 
         lines = text.strip().split('\n')
 

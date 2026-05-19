@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-3.0.3-blue.svg)
+![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -21,7 +21,7 @@
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, date/time arithmetic, hexadecimal/binary numbers, byte order swapping, multi-session tabs, global variables, and more — making complex calculations as simple as writing on paper.
 
-Version: 3.0
+Version: 3.1
 
 ### 🚀 Quick Start
 
@@ -76,6 +76,7 @@ python main.py --version
 ### ✨ Key Features
 
 - 🧮 **Variable References** - Define variables and use them later
+- 🧮 🆕 **User-Defined Functions** - Define `f(x,y) = expr` and call `f(1,2)` with implicit multiplication
 - 🔢 **Multi-base Support** - Hexadecimal (0xFF), Binary (0b1010)
 - ⚡ **Bitwise Operations** - Support <<, >>, &, |, ^, ~ operators
 - 📊 **bitmap() Bit Visualization** - View each bit's value and index, big/little endian display
@@ -105,6 +106,36 @@ python main.py --version
 - 🔤 **Font Scaling** - GUI supports font size adjustment
 - 🔄 **Undo/Redo** - Support undo and redo operations
 - 💡 **Smart Comments** - Auto hex format for bitwise operations
+
+### 🆕 What's New in v3.1
+
+#### User-Defined Functions
+
+Define reusable functions with parameters and call them in expressions:
+
+```python
+# Define a function
+func(x, y) = 3*x + 5*y * 2
+func(1, 2)                    # = 23
+
+# Implicit multiplication supported
+f(x) = 3x + 1
+f(5)                          # = 16
+
+# Functions can reference variables
+offset = 100
+g(x) = x + offset
+g(5)                          # = 105
+
+# Nested function calls
+double(x) = 2*x
+quad(x) = double(double(x))
+quad(3)                       # = 12
+
+# Assign function result to variable
+area(r) = 3.14 * r * r
+circle = area(5)              # = 78.5
+```
 
 ### 🆕 What's New in v3.0
 
@@ -254,6 +285,25 @@ offset = base + page_size  # 0x40001000
 
 ### 📚 Built-in Functions
 
+#### User-Defined Functions
+
+Define custom functions with parameters and use them in expressions.
+
+```python
+# Syntax: name(param1, param2, ...) = expression
+func(x, y) = 3*x + 5*y
+func(2, 3)                    # = 21
+
+# Implicit multiplication: 3x means 3*x
+f(x) = 3x + 1
+f(5)                          # = 16
+
+# Nested calls
+double(x) = 2*x
+quad(x) = double(double(x))
+quad(3)                       # = 12
+```
+
 #### bitmap()
 
 Bit structure visualization function, displaying each bit's value and index.
@@ -386,7 +436,7 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、日期/时间运算、16进制/2进制数值、字节序转换、多会话标签页、全局变量共享等功能，让复杂计算像在纸上写算式一样简单。
 
-版本：3.0
+版本：3.1
 
 ### 🚀 快速开始
 
@@ -441,6 +491,7 @@ python main.py --version
 ### ✨ 核心特性
 
 - 🧮 **变量引用** - 定义变量，后续直接使用
+- 🧮 🆕 **自定义函数** - 定义 `f(x,y) = 表达式` 并调用 `f(1,2)`，支持隐式乘法
 - 🔢 **多进制支持** - 16进制（0xFF）、2进制（0b1010）
 - ⚡ **位运算** - 支持 <<、>>、&、|、^、~ 等操作
 - 📊 **bitmap() 位结构可视化** - 查看每一位的值和索引，支持大端/小端显示
@@ -470,6 +521,36 @@ python main.py --version
 - 🔤 **字体缩放** - GUI 支持字体放大缩小
 - 🔄 **撤销/恢复** - 支持撤销和恢复操作
 - 💡 **智能注释** - 位运算自动显示16进制格式
+
+### 🆕 v3.1 新功能详解
+
+#### 自定义函数
+
+定义带参数的可复用函数，并在表达式中调用：
+
+```python
+# 定义函数
+func(x, y) = 3*x + 5*y * 2
+func(1, 2)                    # = 23
+
+# 支持隐式乘法（3x 等价于 3*x）
+f(x) = 3x + 1
+f(5)                          # = 16
+
+# 函数体可引用已定义的变量
+offset = 100
+g(x) = x + offset
+g(5)                          # = 105
+
+# 嵌套函数调用
+double(x) = 2*x
+quad(x) = double(double(x))
+quad(3)                       # = 12
+
+# 函数结果赋值给变量
+面积(r) = 3.14 * r * r
+圆 = 面积(5)                  # = 78.5
+```
 
 ### 🆕 v3.0 新功能详解
 
@@ -618,6 +699,25 @@ offset = base + page_size  # 0x40001000
 ```
 
 ### 📚 内置函数
+
+#### 自定义函数
+
+定义带参数的自定义函数，并在表达式中调用。
+
+```python
+# 语法：函数名(参数1, 参数2, ...) = 表达式
+func(x, y) = 3*x + 5*y
+func(2, 3)                    # = 21
+
+# 隐式乘法：3x 等价于 3*x
+f(x) = 3x + 1
+f(5)                          # = 16
+
+# 嵌套调用
+double(x) = 2*x
+quad(x) = double(double(x))
+quad(3)                       # = 12
+```
 
 #### bitmap()
 
