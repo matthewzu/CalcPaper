@@ -33,6 +33,16 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
+          ### 🆕 New in v3.2 / v3.2 新功能
+          - 🔧 Function name autocomplete / 函数名自动补齐
+            - Auto-suggest local, global, and built-in functions / 自动补全局部、全局和内置函数
+            - Functions shown with `()` suffix, cursor placed between parens / 函数带括号后缀，光标定位括号内
+          - 🌐 global() supports functions / global() 支持函数全局化
+            - `global(func_name)` shares user-defined functions across tabs / 跨标签页共享函数
+            - Global functions persist in session file / 全局函数持久化保存
+          - 📑 Functions tab / 函数列表标签页
+            - View local, global (🌐), and built-in functions in one panel / 一个面板查看所有函数
+
           ### 🆕 New in v3.1 / v3.1 新功能
           - 🧮 User-defined functions: `f(x,y) = 3*x + 5*y` then `f(1,2)` / 自定义函数
             - Implicit multiplication: `f(x) = 3x + 1` / 隐式乘法
@@ -82,7 +92,9 @@ jobs:
           ### ✅ All Features / 全部功能
           - 🧮 Variable references / 变量引用
           - 🧮 User-defined functions / 自定义函数 (implicit multiplication / 隐式乘法)
-          - 🌐 global() cross-tab variable sharing / 跨标签全局变量
+          - 🌐 global() cross-tab variable & function sharing / 跨标签全局变量和函数
+          - 🔧 Function autocomplete / 函数名自动补齐
+          - 📑 Functions tab / 函数列表标签页
           - 🔢 Hex & Binary support / 16进制/2进制
           - ⚡ Bitwise operations / 位运算 (<<, >>, &, |, ^, ~)
           - 📊 bitmap() bit visualization / 位结构可视化
@@ -91,7 +103,7 @@ jobs:
           - 📅 Date & time arithmetic / 日期时间运算
           - 📆 workday() working day calculation / 工作日计算
           - 💯 Percentage calculation / 百分数计算
-          - ✏️ Variable autocomplete / 变量自动补全
+          - ✏️ Variable & function autocomplete / 变量和函数自动补全
           - 📑 Multi-session tabs / 多会话标签页
           - ⚡ Incremental calculation / 增量计算
           - 👁️ Real-time preview / 实时预览
