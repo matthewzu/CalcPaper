@@ -101,6 +101,19 @@ lunch = start + h3 + m30
 # 11. 全局变量 / Global Variables 🆕
 # ========================================
 # 使用 global() 声明跨标签页共享的变量
+# Use global() to share variables across tabs
+
+# 先定义变量，再用 global() 声明为全局
+# Define a variable first, then declare it global
 base = 0x40000000
 global(base)
-# 其他标签页可直接使用 base 变量
+
+# 可以声明多个全局变量
+# Multiple global variables can be declared
+page_size = 4096
+global(page_size)
+
+# 其他标签页可直接使用 base 和 page_size 变量
+# Other tabs can use base and page_size directly
+# 局部变量优先于同名全局变量
+# Local variables take priority over globals with the same name

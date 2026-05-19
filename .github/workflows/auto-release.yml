@@ -33,13 +33,17 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
-          ### 🆕 New in v2.7 / v2.7 新功能
-          - 📑 Tab layout: Editor, Variables, History / Tab 布局：编辑器、变量、历史
-          - 🎨 CustomTkinter modern UI / 现代化界面
-          - 🌗 Appearance mode: System/Light/Dark / 外观模式切换
-          - 🔄 Manual update check button / 手动更新检查按钮
-          - 📊 Variables panel with auto-refresh / 变量面板自动刷新
-          - 📜 History panel with colored diff / 历史面板彩色差异显示
+          ### 🆕 New in v3.0 / v3.0 新功能
+          - 📑 Multi-session tabs: independent calculator sessions / 多会话标签页
+            - Ctrl+T new tab, Ctrl+W close, Ctrl+Tab switch / 快捷键操作
+            - Drag to reorder, double-click to rename / 拖动排序、双击重命名
+          - 🌐 Global variables: `global(var)` shares variables across tabs / 全局变量跨标签共享
+          - 📜 Git history: persistent calculation history in `~/.calcpaper/history` / Git 历史存储
+          - 🔢 Auto output format: hex/binary literals auto-detect output format / 自动输出格式检测
+          - ⚡ Incremental calculation: only recalculates changed lines / 增量计算引擎
+          - 👁️ Real-time preview: live results shown while typing / 实时计算预览
+          - 📝 Enhanced syntax highlighting: multi-token type support / 增强语法高亮
+          - 🖥️ Virtual text rendering: 10000+ lines without performance loss / 虚拟化文本渲染
 
           ### 🆕 From v2.2 / v2.2 功能
           - 📁 User data directory `~/.calcpaper` / 用户数据目录
@@ -67,6 +71,7 @@ jobs:
 
           ### ✅ All Features / 全部功能
           - 🧮 Variable references / 变量引用
+          - 🌐 global() cross-tab variable sharing / 跨标签全局变量
           - 🔢 Hex & Binary support / 16进制/2进制
           - ⚡ Bitwise operations / 位运算 (<<, >>, &, |, ^, ~)
           - 📊 bitmap() bit visualization / 位结构可视化
@@ -76,6 +81,10 @@ jobs:
           - 📆 workday() working day calculation / 工作日计算
           - 💯 Percentage calculation / 百分数计算
           - ✏️ Variable autocomplete / 变量自动补全
+          - 📑 Multi-session tabs / 多会话标签页
+          - ⚡ Incremental calculation / 增量计算
+          - 👁️ Real-time preview / 实时预览
+          - 📜 Git-based history / Git 历史存储
           - 🔄 Auto update check / 自动检查更新（含自动下载）
           - 📁 User data directory / 用户数据目录 (~/.calcpaper)
           - 💾 Session auto-restore / 会话自动恢复

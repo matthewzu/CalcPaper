@@ -88,5 +88,5 @@ demo_*.txt
 *_result.txt
 *_output.txt
 
-# Promotion docs (local only)
-temp/知乎推广文档.md
+# Temp directory (local only)
+temp/

@@ -2398,6 +2398,7 @@ comma(1234567)
   swap(value)             Byte order swap (can use in expressions)
   hex(value)              Display as hexadecimal
   comma(value)            Display with comma separators (e.g. 59,200)
+  global(var_name)        Declare variable shared across all tabs
 
 === Date/Time Arithmetic ===
   Yyyyymmdd               Date literal      e.g. Y20260410
@@ -2512,6 +2513,7 @@ comma(1234567)
   swap(数值)              字节序交换（可用于表达式）
   hex(数值)               显示16进制
   comma(数值)             千分位格式显示（如 59,200）
+  global(变量名)          声明跨标签页共享的全局变量
 
 === 日期/时间运算 ===
   Yyyyymmdd               日期字面量      例: Y20260410

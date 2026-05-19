@@ -176,8 +176,8 @@ def _detect_variables_defined(line: str) -> list[str]:
     if '#' in line:
         line = line.split('#')[0].strip()
 
-    # Skip function-style calls (hex(...), bitmap(...), comma(...), workday(...))
-    func_pattern = r'^(hex|bitmap|comma|workday)\s*\('
+    # Skip function-style calls (hex(...), bitmap(...), comma(...), workday(...), global(...))
+    func_pattern = r'^(hex|bitmap|comma|workday|global)\s*\('
     if re.match(func_pattern, line, re.IGNORECASE):
         return []
 

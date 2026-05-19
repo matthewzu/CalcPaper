@@ -183,6 +183,18 @@ class CalculatorPaperAdvanced:
         comma_pattern = r'^comma\s*\(\s*(.+)\s*\)$'
         comma_func_match = re.match(comma_pattern, line, re.IGNORECASE)
 
+        # Check if global() declaration is used (marks a variable for cross-session sharing)
+        global_pattern = r'^global\s*\(\s*([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*\)$'
+        global_func_match = re.match(global_pattern, line)
+
+        if global_func_match:
+            # global() is a declaration, not an expression - return the variable's value if it exists
+            var_name = global_func_match.group(1)
+            if var_name in self.variables:
+                return self.variables[var_name], None, None, None, False, None
+            else:
+                return None, None, None, None, False, None
+
         if hex_func_match:
             use_hex_func = True
             value_expr = hex_func_match.group(1).strip()
@@ -277,7 +289,7 @@ class CalculatorPaperAdvanced:
             var_pattern = r'\b([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\b'
             for m in re.finditer(var_pattern, line):
                 var_name = m.group(1)
-                if var_name.lower() not in ['swap', 'bitmap', 'hex', 'workday'] and var_name in self.variables:
+                if var_name.lower() not in ['swap', 'bitmap', 'hex', 'workday', 'global'] and var_name in self.variables:
                     val = self.variables[var_name]
                     if isinstance(val, (datetime.date, datetime.time)):
                         has_date_time = True
@@ -407,7 +419,7 @@ class CalculatorPaperAdvanced:
         def replace_func(match):
             var_name = match.group(1)
             # Skip placeholders and function names
-            if var_name.startswith('__PROTECTED_') or var_name.lower() in ['swap', 'bitmap', 'hex', 'comma']:
+            if var_name.startswith('__PROTECTED_') or var_name.lower() in ['swap', 'bitmap', 'hex', 'comma', 'global']:
                 return var_name
             # Skip date/time/duration literals (reserved keyword pattern)
             if self._is_reserved_keyword(var_name):
