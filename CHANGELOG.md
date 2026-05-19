@@ -2,6 +2,15 @@
 
 # 更新日志 / Changelog
 
+## [3.1.2] - 2026-05-19
+
+### 修复 / Fixed
+- 🛠️ 修复更新重启时闪现命令行窗口（ping/timeout 窗口）的问题
+  - Windows：改用 PowerShell `-WindowStyle Hidden` 实现完全无窗口的延迟等待和重启
+  - macOS：使用 `open` 命令启动新进程，等待旧进程退出后再启动
+  - Linux：使用 `start_new_session` + 后台进程，等待旧进程退出后再启动
+  - 所有平台：清除 `_MEIPASS2` 环境变量，清理 `.old` 残留文件
+
 ## [3.1.1] - 2026-05-19
 
 ### 修复 / Fixed

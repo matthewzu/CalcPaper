@@ -782,7 +782,8 @@ class CalculatorGUIAdvanced:
         
         Critical: Must clear _MEIPASS2 environment variable to prevent the new
         process from inheriting the old PyInstaller temp directory path, which
-        causes "Failed to load Python DLL" errors.
+        causes "Failed to load Python DLL" errors on Windows or similar issues
+        on macOS/Linux.
         """
         if exe_path is None:
             exe_path = sys.executable
@@ -793,26 +794,44 @@ class CalculatorGUIAdvanced:
             env.pop('_MEIPASS2', None)
             env.pop('_MEIPASS', None)
             
+            current_pid = os.getpid()
+            
             if sys.platform == "win32":
-                # Wait 5 seconds for old process to fully exit and _MEI dir to be cleaned,
-                # then start the new exe in a fresh environment
-                cmd = (
-                    f'cmd /C "timeout /t 5 /nobreak >nul & '
-                    f'del /f /q "{exe_path}.old" 2>nul & '
-                    f'start "" "{exe_path}""'
+                # Use PowerShell for a completely silent delay (no window flash).
+                # Wait 5 seconds for old process to fully exit and _MEI dir cleanup,
+                # then launch the new exe.
+                ps_cmd = (
+                    f'powershell -WindowStyle Hidden -Command "'
+                    f'Start-Sleep -Seconds 5; '
+                    f'Remove-Item -Force -ErrorAction SilentlyContinue \'{exe_path}.old\'; '
+                    f'Start-Process \'{exe_path}\'"'
                 )
                 subprocess.Popen(
-                    cmd,
-                    shell=True,
+                    ps_cmd,
+                    shell=False,
                     env=env,
                     creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
                     close_fds=True
                 )
-            else:
-                current_pid = os.getpid()
+            elif sys.platform == "darwin":
+                # macOS: wait for old process to exit, clean up .old, then open new exe
                 subprocess.Popen(
                     f'while kill -0 {current_pid} 2>/dev/null; do sleep 0.5; done; '
-                    f'sleep 1; "{exe_path}"',
+                    f'sleep 1; '
+                    f'rm -f "{exe_path}.old" 2>/dev/null; '
+                    f'open "{exe_path}"',
+                    shell=True,
+                    env=env,
+                    start_new_session=True,
+                    close_fds=True
+                )
+            else:
+                # Linux: wait for old process to exit, clean up .old, then launch
+                subprocess.Popen(
+                    f'while kill -0 {current_pid} 2>/dev/null; do sleep 0.5; done; '
+                    f'sleep 1; '
+                    f'rm -f "{exe_path}.old" 2>/dev/null; '
+                    f'"{exe_path}" &',
                     shell=True,
                     env=env,
                     start_new_session=True,
