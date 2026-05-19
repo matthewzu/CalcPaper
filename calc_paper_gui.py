@@ -778,28 +778,45 @@ class CalculatorGUIAdvanced:
     def _restart_app(self, exe_path=None):
         """Restart the application after update.
         
-        Uses a small delay and a detached subprocess to avoid PyInstaller
-        _MEI temp directory conflicts (the old process must fully exit
-        before the new one starts accessing shared resources).
+        Waits for the current process to fully exit before launching the new exe.
+        
+        Critical: Must clear _MEIPASS2 environment variable to prevent the new
+        process from inheriting the old PyInstaller temp directory path, which
+        causes "Failed to load Python DLL" errors.
         """
         if exe_path is None:
             exe_path = sys.executable
         try:
+            import subprocess
+            # Clear PyInstaller env vars so child process doesn't inherit old _MEI path
+            env = os.environ.copy()
+            env.pop('_MEIPASS2', None)
+            env.pop('_MEIPASS', None)
+            
             if sys.platform == "win32":
-                # Use cmd /C start with a delay to let the old process exit cleanly
-                # before the new exe launches (avoids _MEI temp dir conflicts)
-                import subprocess
+                # Wait 5 seconds for old process to fully exit and _MEI dir to be cleaned,
+                # then start the new exe in a fresh environment
+                cmd = (
+                    f'cmd /C "timeout /t 5 /nobreak >nul & '
+                    f'del /f /q "{exe_path}.old" 2>nul & '
+                    f'start "" "{exe_path}""'
+                )
                 subprocess.Popen(
-                    f'ping 127.0.0.1 -n 2 >nul & "{exe_path}"',
+                    cmd,
                     shell=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+                    env=env,
+                    creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                    close_fds=True
                 )
             else:
-                import subprocess
+                current_pid = os.getpid()
                 subprocess.Popen(
-                    f'sleep 1 && "{exe_path}"',
+                    f'while kill -0 {current_pid} 2>/dev/null; do sleep 0.5; done; '
+                    f'sleep 1; "{exe_path}"',
                     shell=True,
-                    start_new_session=True
+                    env=env,
+                    start_new_session=True,
+                    close_fds=True
                 )
         except Exception:
             pass
