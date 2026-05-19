@@ -189,10 +189,13 @@ class CalculatorPaperAdvanced:
         global_func_match = re.match(global_pattern, line)
 
         if global_func_match:
-            # global() is a declaration, not an expression - return the variable's value if it exists
+            # global() is a declaration, not an expression - return the variable's or function's value if it exists
             var_name = global_func_match.group(1)
             if var_name in self.variables:
                 return self.variables[var_name], None, None, None, False, None
+            elif var_name in self.functions:
+                params, body = self.functions[var_name]
+                return f"{var_name}({', '.join(params)}) = {body}", None, None, None, False, None
             else:
                 return None, None, None, None, False, None
 
@@ -1309,18 +1312,20 @@ class CalculatorPaperAdvanced:
 
         return '\n'.join(result_lines)
 
-    def process_text(self, text, preset_variables=None):
+    def process_text(self, text, preset_variables=None, preset_functions=None):
         """Process multi-line text
         
         Args:
             text: The multi-line input text to process.
             preset_variables: Optional dict of pre-defined variables (e.g. global variables)
                              that should be available during calculation.
+            preset_functions: Optional dict of pre-defined functions (e.g. global functions)
+                             {name: (params, body_expr)} that should be available.
         """
         self.lines = []
         self.results = []
         self.variables = dict(preset_variables) if preset_variables else {}
-        self.functions = {}  # Reset user-defined functions
+        self.functions = dict(preset_functions) if preset_functions else {}  # Reset user-defined functions
 
         lines = text.strip().split('\n')
 
@@ -1476,6 +1481,9 @@ class CalculatorPaperAdvanced:
                     else:
                         # No bitmap: show decimal only
                         result_str = str(result)
+                elif isinstance(result, str):
+                    # String result (e.g. from global() on a function)
+                    result_str = result
                 elif result == int(result):
                     result_str = str(int(result))
                 else:

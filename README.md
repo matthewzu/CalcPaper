@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -21,7 +21,7 @@
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, date/time arithmetic, hexadecimal/binary numbers, byte order swapping, multi-session tabs, global variables, and more — making complex calculations as simple as writing on paper.
 
-Version: 3.1
+Version: 3.2
 
 ### 🚀 Quick Start
 
@@ -77,6 +77,9 @@ python main.py --version
 
 - 🧮 **Variable References** - Define variables and use them later
 - 🧮 🆕 **User-Defined Functions** - Define `f(x,y) = expr` and call `f(1,2)` with implicit multiplication
+- 🔧 🆕 **Function Autocomplete** - Auto-suggest functions when typing, with cursor placed between parens
+- 🌐 🆕 **Global Functions** - `global(func)` shares functions across all tabs
+- 📑 🆕 **Functions Tab** - View all local, global, and built-in functions in one panel
 - 🔢 **Multi-base Support** - Hexadecimal (0xFF), Binary (0b1010)
 - ⚡ **Bitwise Operations** - Support <<, >>, &, |, ^, ~ operators
 - 📊 **bitmap() Bit Visualization** - View each bit's value and index, big/little endian display
@@ -92,7 +95,7 @@ python main.py --version
 - 👁️ 🆕 **Real-time Preview** - Live results shown while typing (300ms delay)
 - 📝 🆕 **Enhanced Syntax Highlighting** - Multi-token type highlighting (comments, variables, functions, etc.)
 - 🖥️ 🆕 **Virtual Text Rendering** - 10000+ lines without performance loss
-- ✏️ **Variable Name Autocomplete** - Auto-suggest popup when typing variable names in GUI
+- ✏️ **Variable & Function Autocomplete** - Auto-suggest popup when typing variable/function names in GUI
 - 🔄 **Auto Update Check** - Background check for latest GitHub release, auto-download
 - 📁 **User Data Directory** - Config and session stored in `~/.calcpaper`
 - 🎨 **Modern UI (CustomTkinter)** - Rounded buttons, hover animations, flat modern design
@@ -106,6 +109,40 @@ python main.py --version
 - 🔤 **Font Scaling** - GUI supports font size adjustment
 - 🔄 **Undo/Redo** - Support undo and redo operations
 - 💡 **Smart Comments** - Auto hex format for bitwise operations
+
+### 🆕 What's New in v3.2
+
+#### Function Name Autocomplete
+
+When typing in the editor, function names are now included in autocomplete suggestions:
+
+- User-defined functions (local and global) shown with `()` suffix
+- Built-in functions (swap, bitmap, hex, comma, global, workday) included
+- Selecting a function places cursor between parentheses for immediate argument input
+
+#### Global Function Sharing
+
+`global()` now supports globalizing user-defined functions across all tabs:
+
+```python
+# Tab 1: define and share a function
+double(x) = 2*x
+global(double)
+
+# Tab 2: use the shared function directly
+result = double(5)    # = 10
+```
+
+- Global functions persist across sessions (saved to session file)
+- `global(funcName)` displays the function definition in output
+
+#### Functions Tab
+
+New "Functions" tab in the side panel showing:
+
+- Local functions defined in current session
+- 🌐 Global functions shared across tabs
+- Built-in functions with brief descriptions
 
 ### 🆕 What's New in v3.1
 
@@ -345,7 +382,7 @@ workday(Y20260411, 15, Y20260501/-Y20260412)  # combined
 
 #### global()
 
-Declares a variable as global, sharing it across all tabs.
+Declares a variable or function as global, sharing it across all tabs.
 
 ```python
 # Define variable first, then declare it global
@@ -354,8 +391,12 @@ global(base)
 
 page_size = 4096
 global(page_size)
-# Other tabs can now use base and page_size directly
-# Local variables take priority over globals with the same name
+
+# Define function first, then declare it global
+double(x) = 2*x
+global(double)
+# Other tabs can now use base, page_size, and double() directly
+# Local variables/functions take priority over globals with the same name
 ```
 
 ### 🔒 Reserved Keywords
@@ -436,7 +477,7 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、日期/时间运算、16进制/2进制数值、字节序转换、多会话标签页、全局变量共享等功能，让复杂计算像在纸上写算式一样简单。
 
-版本：3.1
+版本：3.2
 
 ### 🚀 快速开始
 
@@ -492,6 +533,9 @@ python main.py --version
 
 - 🧮 **变量引用** - 定义变量，后续直接使用
 - 🧮 🆕 **自定义函数** - 定义 `f(x,y) = 表达式` 并调用 `f(1,2)`，支持隐式乘法
+- 🔧 🆕 **函数名自动补齐** - 输入时自动补全函数名，选中后光标定位到括号内
+- 🌐 🆕 **全局函数共享** - `global(函数名)` 跨标签页共享函数
+- 📑 🆕 **函数列表标签页** - 在一个面板中查看所有局部、全局和内置函数
 - 🔢 **多进制支持** - 16进制（0xFF）、2进制（0b1010）
 - ⚡ **位运算** - 支持 <<、>>、&、|、^、~ 等操作
 - 📊 **bitmap() 位结构可视化** - 查看每一位的值和索引，支持大端/小端显示
@@ -507,7 +551,7 @@ python main.py --version
 - 👁️ 🆕 **实时计算预览** - 输入时在当前行右侧显示预览结果
 - 📝 🆕 **增强语法高亮** - 多种 Token 类型差异化高亮
 - 🖥️ 🆕 **虚拟化文本渲染** - 支持 10000+ 行无性能下降
-- ✏️ **变量名自动补全** - GUI 中输入变量名时自动弹出候选列表
+- ✏️ **变量和函数自动补全** - GUI 中输入变量名或函数名时自动弹出候选列表
 - 🔄 **自动检查更新** - 后台检查 GitHub 最新版本，确认后自动下载
 - 📁 **用户数据目录** - 配置和会话存储在 `~/.calcpaper`
 - 🎨 **现代化界面 (CustomTkinter)** - 圆角按钮、hover 动画、扁平化设计
@@ -521,6 +565,40 @@ python main.py --version
 - 🔤 **字体缩放** - GUI 支持字体放大缩小
 - 🔄 **撤销/恢复** - 支持撤销和恢复操作
 - 💡 **智能注释** - 位运算自动显示16进制格式
+
+### 🆕 v3.2 新功能详解
+
+#### 函数名自动补齐
+
+在编辑器中输入时，函数名现在也会出现在自动补全候选列表中：
+
+- 用户定义的函数（局部和全局）带 `()` 后缀显示
+- 内置函数（swap、bitmap、hex、comma、global、workday）也包含在内
+- 选中函数后光标自动定位到括号内，方便立即输入参数
+
+#### global() 支持函数全局化
+
+`global()` 现在支持将用户定义的函数跨标签页共享：
+
+```python
+# 标签1：定义并共享函数
+double(x) = 2*x
+global(double)
+
+# 标签2：直接使用共享函数
+result = double(5)    # = 10
+```
+
+- 全局函数跨会话持久化保存
+- `global(函数名)` 在输出中显示函数定义
+
+#### 函数列表标签页
+
+侧边栏新增"函数"Tab，分三个区域展示：
+
+- 局部函数：当前会话中定义的函数
+- 🌐 全局函数：跨标签页共享的函数
+- 内置函数：所有内置函数及简要说明
 
 ### 🆕 v3.1 新功能详解
 
@@ -760,7 +838,7 @@ workday(Y20260411, 15, Y20260501/-Y20260412)  # 组合
 
 #### global()
 
-全局变量声明函数。将变量声明为跨标签页共享的全局变量。
+全局变量/函数声明函数。将变量或函数声明为跨标签页共享。
 
 ```python
 # 先定义变量，再用 global() 声明为全局
@@ -769,8 +847,12 @@ global(base)
 
 page_size = 4096
 global(page_size)
-# 其他标签页可直接使用 base 和 page_size
-# 局部变量优先于同名全局变量
+
+# 先定义函数，再用 global() 声明为全局
+double(x) = 2*x
+global(double)
+# 其他标签页可直接使用 base、page_size 和 double()
+# 局部变量/函数优先于同名全局变量/函数
 ```
 
 ### 🔒 保留关键字说明

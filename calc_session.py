@@ -32,18 +32,20 @@ from calc_paper import CalculatorPaperAdvanced
 class GlobalVariableStore:
     """跨会话共享的全局变量存储
     
-    Provides a centralized store for global variables that are shared
+    Provides a centralized store for global variables and functions that are shared
     across all calculator sessions. Supports an observer pattern where
-    listeners are notified whenever a variable changes.
+    listeners are notified whenever a variable or function changes.
     
     Usage:
         store = GlobalVariableStore()
         store.subscribe(lambda name, value: print(f"{name} = {value}"))
         store.set("pi", 3.14159)  # Notifies all listeners
+        store.set_function("double", ["x"], "2*x")  # Global function
     """
 
     def __init__(self):
         self._variables: dict[str, Any] = {}
+        self._functions: dict[str, tuple[list[str], str]] = {}  # {name: (params, body)}
         self._listeners: list[Callable[[str, Any], None]] = []
 
     def set(self, name: str, value: Any) -> None:
@@ -87,6 +89,46 @@ class GlobalVariableStore:
         """
         return dict(self._variables)
 
+    def set_function(self, name: str, params: list[str], body: str) -> None:
+        """设置全局函数并通知所有监听者
+        
+        Args:
+            name: Function name
+            params: List of parameter names
+            body: Function body expression
+        """
+        self._functions[name] = (params, body)
+        self._notify_listeners(f"func:{name}", (params, body))
+
+    def get_function(self, name: str) -> tuple[list[str], str] | None:
+        """获取全局函数定义
+        
+        Args:
+            name: Function name
+            
+        Returns:
+            Tuple of (params, body) or None if not found
+        """
+        return self._functions.get(name)
+
+    def has_function(self, name: str) -> bool:
+        """检查全局函数是否存在"""
+        return name in self._functions
+
+    def get_all_functions(self) -> dict[str, tuple[list[str], str]]:
+        """获取所有全局函数
+        
+        Returns:
+            A copy of all global functions as a dictionary {name: (params, body)}
+        """
+        return dict(self._functions)
+
+    def remove_function(self, name: str) -> None:
+        """删除一个全局函数"""
+        if name in self._functions:
+            del self._functions[name]
+            self._notify_listeners(f"func:{name}", None)
+
     def remove(self, name: str) -> None:
         """删除一个全局变量
         
@@ -101,15 +143,18 @@ class GlobalVariableStore:
             self._notify_listeners(name, None)
 
     def clear(self) -> None:
-        """清除所有全局变量
+        """清除所有全局变量和函数
         
-        Removes all variables and notifies listeners for each removed variable
-        with a value of None.
+        Removes all variables/functions and notifies listeners for each removed item.
         """
         names = list(self._variables.keys())
         self._variables.clear()
         for name in names:
             self._notify_listeners(name, None)
+        func_names = list(self._functions.keys())
+        self._functions.clear()
+        for name in func_names:
+            self._notify_listeners(f"func:{name}", None)
 
     def subscribe(self, callback: Callable[[str, Any], None]) -> None:
         """注册变量变更监听器
@@ -291,6 +336,8 @@ class SessionManager:
             "version": 2,
             "active_tab_index": self._active_tab_index,
             "global_variables": self._serialize_variables(self._global_store.get_all()),
+            "global_functions": {name: {"params": params, "body": body} 
+                                 for name, (params, body) in self._global_store.get_all_functions().items()},
             "sessions": sessions_data
         }
         
@@ -355,6 +402,13 @@ class SessionManager:
         global_vars = data.get("global_variables", {})
         for name, value in global_vars.items():
             self._global_store.set(name, value)
+        
+        # Restore global functions
+        global_funcs = data.get("global_functions", {})
+        for name, func_data in global_funcs.items():
+            params = func_data.get("params", [])
+            body = func_data.get("body", "")
+            self._global_store.set_function(name, params, body)
         
         # Restore sessions
         sessions_data = data.get("sessions", [])

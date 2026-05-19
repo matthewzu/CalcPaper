@@ -1275,6 +1275,9 @@ class CalculatorGUIAdvanced:
                 # Inject global variables
                 for name, value in self.global_store.get_all().items():
                     session.calculator.variables[name] = value
+                # Inject global functions
+                for fname, (params, body) in self.global_store.get_all_functions().items():
+                    session.calculator.functions[fname] = (params, body)
                 session.calculator.process_text(session.input_text)
                 self.calculator = session.calculator
                 session.variables = dict(session.calculator.variables)
@@ -1284,10 +1287,12 @@ class CalculatorGUIAdvanced:
         # Refresh UI
         self._rebuild_session_tabs()
         self._refresh_variables_tab()
+        self._refresh_functions_tab()
 
     def _on_global_variable_changed(self, name, value):
-        """Callback when a global variable changes. Refresh all tabs' variable panels."""
+        """Callback when a global variable or function changes. Refresh all tabs."""
         self._refresh_variables_tab()
+        self._refresh_functions_tab()
 
     def update_initial_font_display(self):
         if hasattr(self, 'font_size_label'):
@@ -1324,6 +1329,8 @@ class CalculatorGUIAdvanced:
         self.output_text.configure(bg=output_bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
         if hasattr(self, 'vars_text'):
             self.vars_text.configure(bg=output_bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
+        if hasattr(self, 'funcs_text'):
+            self.funcs_text.configure(bg=output_bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
         if hasattr(self, 'history_text'):
             self.history_text.configure(bg=output_bg, fg=fg, insertbackground=insert_bg, selectbackground=select_bg)
         # Re-apply syntax highlighting colors for the current theme
@@ -1408,6 +1415,66 @@ class CalculatorGUIAdvanced:
                 else "暂无变量。\n运行计算后变量会显示在这里。"
             self.vars_text.insert(tk.END, hint)
         self.vars_text.configure(state=tk.DISABLED)
+
+    def _refresh_functions_tab(self):
+        """Update the Functions tab with currently defined functions."""
+        if not hasattr(self, 'funcs_text'):
+            return
+        
+        local_funcs = {}
+        if hasattr(self, 'calculator') and hasattr(self.calculator, 'functions'):
+            local_funcs = self.calculator.functions
+
+        global_funcs = self.global_store.get_all_functions() if hasattr(self, 'global_store') else {}
+
+        self.funcs_text.configure(state=tk.NORMAL)
+        self.funcs_text.delete("1.0", tk.END)
+
+        has_content = False
+
+        # Local functions section
+        if local_funcs:
+            has_content = True
+            header = "Local Functions\n" if self.language == 'en' else "局部函数\n"
+            self.funcs_text.insert(tk.END, header)
+            self.funcs_text.insert(tk.END, "─" * 44 + "\n")
+            for name, (params, body) in local_funcs.items():
+                params_str = ", ".join(params)
+                self.funcs_text.insert(tk.END, f"{name}({params_str}) = {body}\n")
+
+        # Global functions section
+        if global_funcs:
+            has_content = True
+            if local_funcs:
+                self.funcs_text.insert(tk.END, "\n")
+            header = "🌐 Global Functions\n" if self.language == 'en' else "🌐 全局函数\n"
+            self.funcs_text.insert(tk.END, header)
+            self.funcs_text.insert(tk.END, "─" * 44 + "\n")
+            for name, (params, body) in global_funcs.items():
+                params_str = ", ".join(params)
+                self.funcs_text.insert(tk.END, f"🌐 {name}({params_str}) = {body}\n")
+
+        # Built-in functions section
+        self.funcs_text.insert(tk.END, "\n")
+        header = "Built-in Functions\n" if self.language == 'en' else "内置函数\n"
+        self.funcs_text.insert(tk.END, header)
+        self.funcs_text.insert(tk.END, "─" * 44 + "\n")
+        builtins_info = [
+            ("hex(expr)", "十六进制输出" if self.language != 'en' else "Hexadecimal output"),
+            ("swap(expr)", "字节序转换" if self.language != 'en' else "Byte order swap"),
+            ("bitmap(expr, endian)", "位图显示" if self.language != 'en' else "Bitmap display"),
+            ("comma(expr)", "千分位格式" if self.language != 'en' else "Thousand separators"),
+            ("global(name)", "全局化变量/函数" if self.language != 'en' else "Globalize var/func"),
+            ("workday(date, n, ...)", "工作日计算" if self.language != 'en' else "Workday calculation"),
+        ]
+        for sig, desc in builtins_info:
+            self.funcs_text.insert(tk.END, f"{sig:<28}{desc}\n")
+
+        if not has_content and not global_funcs:
+            # Only show hint if no user functions at all
+            pass
+
+        self.funcs_text.configure(state=tk.DISABLED)
 
     def _refresh_history_tab(self):
         """Update the History tab showing what changed between each calculation."""
@@ -1659,6 +1726,17 @@ class CalculatorGUIAdvanced:
         self.vars_text = tk.Text(vars_tab, wrap=tk.WORD, font=("Consolas", self.font_size),
                                   state=tk.DISABLED, relief=tk.FLAT, padx=12, pady=12, bd=0, highlightthickness=0)
         self.vars_text.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
+
+        # Tab: Functions (shows defined functions)
+        funcs_tab_name = "Functions" if self.language == 'en' else "函数"
+        self.tabview.add(funcs_tab_name)
+        funcs_tab = self.tabview.tab(funcs_tab_name)
+        funcs_tab.grid_rowconfigure(0, weight=1)
+        funcs_tab.grid_columnconfigure(0, weight=1)
+
+        self.funcs_text = tk.Text(funcs_tab, wrap=tk.WORD, font=("Consolas", self.font_size),
+                                   state=tk.DISABLED, relief=tk.FLAT, padx=12, pady=12, bd=0, highlightthickness=0)
+        self.funcs_text.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
 
         # Tab: History (shows calculation history)
         hist_tab_name = "History" if self.language == 'en' else "历史"
@@ -1915,7 +1993,8 @@ class CalculatorGUIAdvanced:
 
             # Pass global variables as preset (lower priority than local assignments)
             global_vars = self.global_store.get_all()
-            self.calculator.process_text(input_content, preset_variables=global_vars)
+            global_funcs = self.global_store.get_all_functions()
+            self.calculator.process_text(input_content, preset_variables=global_vars, preset_functions=global_funcs)
             output = self.calculator.format_output()
 
             # Check for global() function calls and update global store
@@ -1942,6 +2021,7 @@ class CalculatorGUIAdvanced:
                     pass
 
             self._refresh_variables_tab()
+            self._refresh_functions_tab()
             self._refresh_history_tab()
 
         except Exception as e:
@@ -1958,6 +2038,9 @@ class CalculatorGUIAdvanced:
         for var_name in matches:
             if var_name in self.calculator.variables:
                 self.global_store.set(var_name, self.calculator.variables[var_name])
+            elif var_name in self.calculator.functions:
+                params, body = self.calculator.functions[var_name]
+                self.global_store.set_function(var_name, params, body)
 
     def apply_syntax_highlighting(self):
         for tag in self.output_text.tag_names():
@@ -2300,6 +2383,29 @@ comma(1234567)
                     variables.append(name)
         return variables
 
+    def _get_defined_functions(self):
+        """Get all user-defined function names from input text and global store."""
+        content = self.input_text.get("1.0", "end-1c")
+        functions = []
+        # Match function definitions: func(x, y) = expr
+        pattern = re.compile(r'^([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*\([^)]+\)\s*=', re.MULTILINE)
+        for match in pattern.finditer(content):
+            name = match.group(1)
+            if name.lower() not in ('swap', 'bitmap', 'hex', 'comma', 'global', 'workday'):
+                if name not in functions:
+                    functions.append(name)
+        # Add global functions
+        if hasattr(self, 'global_store'):
+            for fname in self.global_store.get_all_functions():
+                if fname not in functions:
+                    functions.append(fname)
+        # Add built-in function names
+        builtins = ['swap', 'bitmap', 'hex', 'comma', 'global', 'workday']
+        for b in builtins:
+            if b not in functions:
+                functions.append(b)
+        return functions
+
     def _get_current_prefix(self):
         try:
             cursor_pos = self.input_text.index(tk.INSERT)
@@ -2355,15 +2461,25 @@ comma(1234567)
             self.autocomplete.hide()
             return
         variables = self._get_defined_variables()
+        functions = self._get_defined_functions()
+        # Combine: functions shown with () suffix for clarity
+        all_candidates = []
         prefix_lower = prefix.lower()
-        matches = [v for v in variables if v.lower().startswith(prefix_lower) and v != prefix]
-        if matches:
+        for v in variables:
+            if v.lower().startswith(prefix_lower) and v != prefix:
+                all_candidates.append(v)
+        for f in functions:
+            if f.lower().startswith(prefix_lower) and f != prefix:
+                display = f + "()"
+                if display not in all_candidates and f not in all_candidates:
+                    all_candidates.append(display)
+        if all_candidates:
             try:
                 bbox = self.input_text.bbox(tk.INSERT)
                 if bbox:
                     x = self.input_text.winfo_rootx() + bbox[0]
                     y = self.input_text.winfo_rooty() + bbox[1] + bbox[3]
-                    self.autocomplete.show(matches, x, y)
+                    self.autocomplete.show(all_candidates, x, y)
                 else:
                     self.autocomplete.hide()
             except Exception:
@@ -2374,7 +2490,15 @@ comma(1234567)
     def _insert_completion(self, variable_name, prefix_start):
         cursor_pos = self.input_text.index(tk.INSERT)
         self.input_text.delete(prefix_start, cursor_pos)
-        self.input_text.insert(prefix_start, variable_name)
+        # If completing a function (ends with "()"), insert and place cursor between parens
+        if variable_name.endswith("()"):
+            func_name = variable_name[:-2]
+            self.input_text.insert(prefix_start, func_name + "()")
+            # Move cursor between the parentheses
+            insert_pos = self.input_text.index(f"{prefix_start} + {len(func_name) + 1} chars")
+            self.input_text.mark_set(tk.INSERT, insert_pos)
+        else:
+            self.input_text.insert(prefix_start, variable_name)
         self.autocomplete.hide()
 
 
@@ -2462,11 +2586,12 @@ comma(1234567)
   swap(value)             Byte order swap (can use in expressions)
   hex(value)              Display as hexadecimal
   comma(value)            Display with comma separators (e.g. 59,200)
-  global(var_name)        Declare variable shared across all tabs
+  global(name)            Declare variable/function shared across all tabs
 
 === User-Defined Functions ===
   name(params) = expr     Define a function
   name(args)              Call a function
+  global(func_name)       Share function across all tabs
 
   Examples:
     func(x, y) = 3*x + 5*y     Define with explicit multiplication
@@ -2474,6 +2599,7 @@ comma(1234567)
     double(x) = 2*x            Single parameter
     quad(x) = double(double(x)) Nested function calls
     result = func(2, 3)        Assign function result to variable
+    global(double)              Share double() across all tabs
 
 === Date/Time Arithmetic ===
   Yyyyymmdd               Date literal      e.g. Y20260410
@@ -2532,7 +2658,9 @@ comma(1234567)
   - Double-click tab name to rename
   - Drag tabs to reorder
   - global(var_name) declares a variable shared across all tabs
+  - global(func_name) declares a function shared across all tabs
   - Variables tab shows current tab name and distinguishes local/global vars
+  - Functions tab shows local, global, and built-in functions
   - History tab shows only the current tab's calculation history
 
 === Auto Output Format ===
@@ -2542,7 +2670,8 @@ comma(1234567)
   - Explicit hex() function always takes priority
 
 === Autocomplete ===
-  Type a variable name prefix -> popup appears
+  Type a variable or function name prefix -> popup appears
+  Functions shown with () suffix, cursor placed between parens on select
   Tab           Confirm selection
   Up/Down       Navigate candidates
   Escape        Dismiss popup
@@ -2589,10 +2718,12 @@ comma(1234567)
   hex(数值)               显示16进制
   comma(数值)             千分位格式显示（如 59,200）
   global(变量名)          声明跨标签页共享的全局变量
+  global(函数名)          声明跨标签页共享的全局函数
 
 === 自定义函数 ===
   函数名(参数) = 表达式    定义函数
   函数名(参数值)           调用函数
+  global(函数名)           共享函数到所有标签页
 
   示例：
     func(x, y) = 3*x + 5*y     显式乘法定义
@@ -2658,7 +2789,9 @@ comma(1234567)
   - 双击标签名可重命名
   - 拖动标签可改变顺序
   - global(变量名) 声明跨标签页共享的全局变量
+  - global(函数名) 声明跨标签页共享的全局函数
   - 变量面板显示当前标签名，区分局部/全局变量
+  - 函数面板显示局部、全局和内置函数
   - 历史面板仅显示当前标签的修改记录
 
 === 自动输出格式 ===
@@ -2668,7 +2801,8 @@ comma(1234567)
   - 显式 hex() 函数始终优先
 
 === 自动补全 ===
-  输入已定义的变量名前缀 -> 弹出候选列表
+  输入已定义的变量名或函数名前缀 -> 弹出候选列表
+  函数名带 () 后缀，选中后光标定位到括号内
   Tab           确认选择
   上/下方向键    导航候选项
   Escape        关闭弹窗
