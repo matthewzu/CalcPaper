@@ -1133,11 +1133,17 @@ class CalculatorPaperAdvanced:
 
         return '\n'.join(result_lines)
 
-    def process_text(self, text):
-        """Process multi-line text"""
+    def process_text(self, text, preset_variables=None):
+        """Process multi-line text
+        
+        Args:
+            text: The multi-line input text to process.
+            preset_variables: Optional dict of pre-defined variables (e.g. global variables)
+                             that should be available during calculation.
+        """
         self.lines = []
         self.results = []
-        self.variables = {}
+        self.variables = dict(preset_variables) if preset_variables else {}
 
         lines = text.strip().split('\n')
 

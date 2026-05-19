@@ -302,7 +302,9 @@ class IncrementalCalcEngine:
         self._last_text = text
         
         # Use the existing calculator to process all text
-        self._calculator.process_text(text)
+        # Pass global variables as preset so they're available during calculation
+        global_vars = self._global_store.get_all()
+        self._calculator.process_text(text, preset_variables=global_vars if global_vars else None)
         
         # Build LineResult list from calculator state
         lines = text.strip().split('\n') if text.strip() else []
@@ -396,7 +398,9 @@ class IncrementalCalcEngine:
         # We need to re-process from the beginning to maintain correct variable state
         self._calculator.lines = []
         self._calculator.results = []
-        self._calculator.variables = {}
+        # Start with global variables as base (local assignments will override)
+        global_vars = self._global_store.get_all()
+        self._calculator.variables = dict(global_vars) if global_vars else {}
 
         all_lines = new_text.strip().split('\n') if new_text.strip() else []
         

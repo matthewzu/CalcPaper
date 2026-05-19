@@ -1877,11 +1877,9 @@ class CalculatorGUIAdvanced:
             # Use the current session's calculator
             self.calculator = CalculatorPaperAdvanced(language=self.language)
 
-            # Inject global variables (lower priority than local)
-            for name, value in self.global_store.get_all().items():
-                self.calculator.variables[name] = value
-
-            self.calculator.process_text(input_content)
+            # Pass global variables as preset (lower priority than local assignments)
+            global_vars = self.global_store.get_all()
+            self.calculator.process_text(input_content, preset_variables=global_vars)
             output = self.calculator.format_output()
 
             # Check for global() function calls and update global store
