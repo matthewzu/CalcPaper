@@ -333,6 +333,9 @@ class CalculatorGUIAdvanced:
         self._active_dialog = None
         self._focus_restore_id = None
 
+        # Clean up leftover .old file from previous update
+        self._cleanup_old_executable()
+
         # Set window icon
         self._set_icon()
 
@@ -762,15 +765,42 @@ class CalculatorGUIAdvanced:
             err_msg = f"Update failed: {e}" if self.language == 'en' else f"更新失败: {e}"
             self.root.after(0, lambda: self.status_var.set(f"❌ {err_msg}"))
 
+    def _cleanup_old_executable(self):
+        """Remove leftover .old file from a previous update."""
+        if getattr(sys, 'frozen', False):
+            old_path = sys.executable + ".old"
+            try:
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+            except OSError:
+                pass
+
     def _restart_app(self, exe_path=None):
-        """Restart the application after update."""
+        """Restart the application after update.
+        
+        Uses a small delay and a detached subprocess to avoid PyInstaller
+        _MEI temp directory conflicts (the old process must fully exit
+        before the new one starts accessing shared resources).
+        """
         if exe_path is None:
             exe_path = sys.executable
         try:
             if sys.platform == "win32":
-                os.startfile(exe_path)
+                # Use cmd /C start with a delay to let the old process exit cleanly
+                # before the new exe launches (avoids _MEI temp dir conflicts)
+                import subprocess
+                subprocess.Popen(
+                    f'ping 127.0.0.1 -n 2 >nul & "{exe_path}"',
+                    shell=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+                )
             else:
-                subprocess.Popen([exe_path], start_new_session=True)
+                import subprocess
+                subprocess.Popen(
+                    f'sleep 1 && "{exe_path}"',
+                    shell=True,
+                    start_new_session=True
+                )
         except Exception:
             pass
         self.root.destroy()
