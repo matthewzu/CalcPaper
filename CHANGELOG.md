@@ -2,6 +2,13 @@
 
 # 更新日志 / Changelog
 
+## [3.2.1] - 2026-05-20
+
+### 修复 / Fixed
+- 🛠️ 修复更新完成后无法自动重启的问题
+  - 根本原因：Windows 平台 `subprocess.Popen` 使用 `shell=False` 但传入了 PowerShell 命令字符串，导致命令无法执行
+  - 修复：改为 `shell=True`，让系统 shell 正确解析并执行 PowerShell 延迟重启命令
+
 ## [3.2.0] - 2026-05-19
 
 ### 新增 / Added

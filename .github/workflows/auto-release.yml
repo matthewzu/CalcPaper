@@ -43,7 +43,11 @@ jobs:
           - 📑 Functions tab / 函数列表标签页
             - View local, global (🌐), and built-in functions in one panel / 一个面板查看所有函数
 
-          ### 🆕 New in v3.1 / v3.1 新功能
+          ### 🛠️ Fixed in v3.2.1 / v3.2.1 修复
+          - Fix auto-restart not working after update on Windows / 修复 Windows 更新后无法自动重启
+            - Root cause: `shell=False` with PowerShell command string / 根因：shell=False 导致命令无法执行
+
+          ### 🛠️ Fixed in v3.1 / v3.1 修复
           - 🧮 User-defined functions: `f(x,y) = 3*x + 5*y` then `f(1,2)` / 自定义函数
             - Implicit multiplication: `f(x) = 3x + 1` / 隐式乘法
             - Nested calls: `quad(x) = double(double(x))` / 嵌套调用

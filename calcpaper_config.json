@@ -1,0 +1,20 @@
+{
+  "language": "zh",
+  "font_size": 10,
+  "window_geometry": "2560x1017",
+  "window_position": "0,0",
+  "data_dir": "D:\\code\\CalcPaper",
+  "shortcuts": {
+    "calculate": "<Control-Return>",
+    "calculate_alt": "<F5>",
+    "clear": "<Control-d>",
+    "undo": "<Control-z>",
+    "redo": "<Control-y>",
+    "load_example": "<Control-l>",
+    "open_file": "<Control-o>",
+    "save_file": "<Control-s>",
+    "font_increase": "<Control-equal>",
+    "font_decrease": "<Control-minus>",
+    "help": "<F1>"
+  }
+}

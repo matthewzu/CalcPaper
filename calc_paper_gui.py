@@ -808,7 +808,7 @@ class CalculatorGUIAdvanced:
                 )
                 subprocess.Popen(
                     ps_cmd,
-                    shell=False,
+                    shell=True,
                     env=env,
                     creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
                     close_fds=True
