@@ -90,3 +90,6 @@ demo_*.txt
 
 # Temp directory (local only)
 temp/
+
+# Kiro
+.kiro/
