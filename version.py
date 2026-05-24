@@ -1,4 +1,4 @@
 """CalcPaper version number - single source of truth"""
 from __future__ import annotations
 
-VERSION = "3.3.0"
+VERSION = "3.3.1"

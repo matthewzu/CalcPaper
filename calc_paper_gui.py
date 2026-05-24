@@ -798,8 +798,15 @@ class CalculatorGUIAdvanced:
                 # Use PowerShell for a completely silent delay (no window flash).
                 # Wait 5 seconds for old process to fully exit and _MEI dir cleanup,
                 # then launch the new exe.
+                # Critical: Explicitly remove _MEIPASS2 inside PowerShell before
+                # launching the new process, to ensure the new exe doesn't inherit
+                # the old PyInstaller temp directory path.
                 ps_cmd = (
                     f'powershell -WindowStyle Hidden -Command "'
+                    f'[Environment]::SetEnvironmentVariable(\'_MEIPASS2\', $null); '
+                    f'[Environment]::SetEnvironmentVariable(\'_MEIPASS\', $null); '
+                    f'$env:_MEIPASS2 = $null; '
+                    f'$env:_MEIPASS = $null; '
                     f'Start-Sleep -Seconds 5; '
                     f'Remove-Item -Force -ErrorAction SilentlyContinue \'{exe_path}.old\'; '
                     f'Start-Process \'{exe_path}\'"'

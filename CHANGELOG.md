@@ -2,6 +2,13 @@
 
 # 更新日志 / Changelog
 
+## [3.3.1] - 2026-05-24
+
+### 修复 / Fixed
+- 🛠️ 修复更新后重启报错 `Failed to load Python DLL _MEI*\python39.dll` 的问题
+  - 根本原因：`subprocess.Popen` 的 `env` 参数在 `shell=True` + `DETACHED_PROCESS` 模式下未能可靠传递给 PowerShell 启动的子进程
+  - 修复：在 PowerShell 命令内部显式清除 `_MEIPASS2` 和 `_MEIPASS` 环境变量，确保 `Start-Process` 启动的新 exe 不会继承旧的 PyInstaller 临时目录路径
+
 ## [3.3.0] - 2026-05-24
 
 ### 新增 / Added
