@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-3.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-3.4.1-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -121,6 +121,8 @@ Undo/redo history is now saved to disk and restored when you reopen the app:
 - Each tab's full history stack (up to 50 entries) persists across sessions
 - History is saved alongside session data in `~/.calcpaper/calcpaper_session.json`
 - Reopen the app and continue undoing/redoing exactly where you left off
+- History only records successful calculations (not every keystroke)
+- History panel shows complete input statements, not fragmented diffs
 
 ### 🆕 What's New in v3.3
 
@@ -619,6 +621,8 @@ python main.py --version
 - 每个标签页的完整历史栈（最多 50 条）跨会话持久化
 - 历史记录随会话数据一起保存到 `~/.calcpaper/calcpaper_session.json`
 - 重新打开应用后可以继续撤销/恢复，完全恢复到上次退出时的状态
+- 仅在计算成功后记录历史（不再记录每次输入变化）
+- 历史面板显示完整的输入语句，不再显示碎片化的 diff
 
 ### 🆕 v3.3 新功能详解
 

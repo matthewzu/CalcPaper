@@ -2725,6 +2725,7 @@ comma(1234567)
 === Tips ===
   - Results are auto-saved and restored on next launch
   - Undo/redo history persists across sessions (up to 50 per tab)
+  - History records only successful calculations (Ctrl+Enter)
   - Window size, position, language, font are remembered
   - All shortcuts are customizable via Settings (gear icon)
   - Update check runs in background; click "Update" button to check manually
@@ -2864,6 +2865,7 @@ comma(1234567)
 === 提示 ===
   - 计算结果自动保存，下次启动自动恢复
   - 撤销/恢复历史跨会话持久化保存（每标签页最多 50 条）
+  - 历史仅在计算成功后记录（Ctrl+Enter）
   - 窗口大小、位置、语言、字体会被记住
   - 所有快捷键可通过设置按钮（齿轮图标）自定义
   - 启动时后台自动检查更新，点击"更新"按钮可手动检查

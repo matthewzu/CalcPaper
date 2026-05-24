@@ -171,12 +171,14 @@ circle = area(5)
 # ========================================
 # 14. 历史记录持久化 / Persistent History 🆕
 # ========================================
-# 撤销/恢复历史现在跨会话保存
-# Undo/redo history now persists across sessions
+# 历史仅在计算成功后记录（Ctrl+Enter）
+# History only records after successful calculation (Ctrl+Enter)
 #
+# - 不再记录每次输入变化，避免碎片化
+#   No longer records every keystroke — clean history
+# - 每条历史显示完整的输入语句
+#   Each entry shows complete input statements
 # - 关闭应用后重新打开，历史完整恢复
 #   Close and reopen the app — history is fully restored
 # - 每个标签页独立维护最多 50 条历史
 #   Each tab maintains up to 50 history entries independently
-# - 可以继续撤销/恢复到之前的状态
-#   Continue undo/redo from where you left off

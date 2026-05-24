@@ -38,6 +38,8 @@ jobs:
             - Undo/redo history survives app restart / 撤销/恢复历史跨会话保存
             - Each tab's history (up to 50 entries) saved to disk / 每标签页历史持久化
             - Stored in `~/.calcpaper/calcpaper_session.json`
+            - Only records successful calculations / 仅在计算成功后记录
+            - Shows complete statements, not fragmented diffs / 显示完整语句
 
           ### 🆕 New in v3.3 / v3.3 新功能
           - 🔄 **Forward References / 前向引用**
