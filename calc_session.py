@@ -332,7 +332,9 @@ class SessionManager:
                 "name": session.name,
                 "input": session.input_text,
                 "output": session.output_text,
-                "variables": self._serialize_variables(session.variables)
+                "variables": self._serialize_variables(session.variables),
+                "gui_history": session.gui_history,
+                "gui_history_index": session.gui_history_index
             })
         
         data = {
@@ -421,6 +423,8 @@ class SessionManager:
             input_text = session_data.get("input", "")
             output_text = session_data.get("output", "")
             variables = session_data.get("variables", {})
+            gui_history = session_data.get("gui_history", [])
+            gui_history_index = session_data.get("gui_history_index", -1)
             
             # Create calculator and restore variables
             calculator = CalculatorPaperAdvanced()
@@ -433,7 +437,9 @@ class SessionManager:
                 output_text=output_text,
                 variables=dict(variables),
                 calculator=calculator,
-                created_at=datetime.now()
+                created_at=datetime.now(),
+                gui_history=gui_history,
+                gui_history_index=gui_history_index
             )
             self._sessions[session_id] = session
             self._session_order.append(session_id)

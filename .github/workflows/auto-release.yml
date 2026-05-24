@@ -33,6 +33,12 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
+          ### 🆕 New in v3.4 / v3.4 新功能
+          - 💾 **Persistent History / 历史记录持久化**
+            - Undo/redo history survives app restart / 撤销/恢复历史跨会话保存
+            - Each tab's history (up to 50 entries) saved to disk / 每标签页历史持久化
+            - Stored in `~/.calcpaper/calcpaper_session.json`
+
           ### 🆕 New in v3.3 / v3.3 新功能
           - 🔄 **Forward References / 前向引用**
             - Variables can be used before definition / 变量可以在定义之前使用
@@ -133,6 +139,7 @@ jobs:
           - 🌏 Bilingual (EN/ZH) / 中英文双语
           - 🔤 Font scaling / 字体缩放
           - 🔄 Undo & Redo / 撤销恢复
+          - 💾 Persistent history / 历史记录持久化（跨会话保存）
 
           Documentation / 文档: [README.md](https://github.com/${{ github.repository }})
         draft: false

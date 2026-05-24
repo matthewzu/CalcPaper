@@ -1,4 +1,4 @@
-# CalcPaper v3.1 功能演示
+# CalcPaper v3.4 功能演示
 # Features Demo
 
 # ========================================
@@ -167,3 +167,16 @@ circle = area(5)
 # x = y + 1
 # y = x + 1
 # → 错误: 循环依赖
+
+# ========================================
+# 14. 历史记录持久化 / Persistent History 🆕
+# ========================================
+# 撤销/恢复历史现在跨会话保存
+# Undo/redo history now persists across sessions
+#
+# - 关闭应用后重新打开，历史完整恢复
+#   Close and reopen the app — history is fully restored
+# - 每个标签页独立维护最多 50 条历史
+#   Each tab maintains up to 50 history entries independently
+# - 可以继续撤销/恢复到之前的状态
+#   Continue undo/redo from where you left off

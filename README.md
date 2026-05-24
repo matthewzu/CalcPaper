@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-3.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-3.4.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -21,7 +21,7 @@
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, date/time arithmetic, hexadecimal/binary numbers, byte order swapping, multi-session tabs, global variables, and more — making complex calculations as simple as writing on paper.
 
-Version: 3.3
+Version: 3.4
 
 ### 🚀 Quick Start
 
@@ -108,8 +108,19 @@ python main.py --version
 - ⌨️ **Customizable Shortcuts** - All keyboard shortcuts are configurable
 - 🌏 **Bilingual (Chinese/English)** - Both GUI and CLI support language switching
 - 🔤 **Font Scaling** - GUI supports font size adjustment
+- 💾 🆕 **Persistent History** - Undo/redo history survives app restart
 - 🔄 **Undo/Redo** - Support undo and redo operations
 - 💡 **Smart Comments** - Auto hex format for bitwise operations
+
+### 🆕 What's New in v3.4
+
+#### Persistent Calculation History
+
+Undo/redo history is now saved to disk and restored when you reopen the app:
+
+- Each tab's full history stack (up to 50 entries) persists across sessions
+- History is saved alongside session data in `~/.calcpaper/calcpaper_session.json`
+- Reopen the app and continue undoing/redoing exactly where you left off
 
 ### 🆕 What's New in v3.3
 
@@ -508,7 +519,7 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、日期/时间运算、16进制/2进制数值、字节序转换、多会话标签页、全局变量共享等功能，让复杂计算像在纸上写算式一样简单。
 
-版本：3.3
+版本：3.4
 
 ### 🚀 快速开始
 
@@ -595,8 +606,19 @@ python main.py --version
 - ⌨️ **可自定义快捷键** - 所有快捷键均可配置
 - 🌏 **中英文双语** - GUI 和命令行都支持中英文切换
 - 🔤 **字体缩放** - GUI 支持字体放大缩小
+- 💾 🆕 **历史记录持久化** - 撤销/恢复历史跨会话保存，重启后可继续
 - 🔄 **撤销/恢复** - 支持撤销和恢复操作
 - 💡 **智能注释** - 位运算自动显示16进制格式
+
+### 🆕 v3.4 新功能详解
+
+#### 历史记录持久化
+
+撤销/恢复历史现在保存到磁盘，重新打开应用后自动恢复：
+
+- 每个标签页的完整历史栈（最多 50 条）跨会话持久化
+- 历史记录随会话数据一起保存到 `~/.calcpaper/calcpaper_session.json`
+- 重新打开应用后可以继续撤销/恢复，完全恢复到上次退出时的状态
 
 ### 🆕 v3.3 新功能详解
 
