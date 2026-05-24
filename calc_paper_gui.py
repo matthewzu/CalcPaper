@@ -617,11 +617,6 @@ class CalculatorGUIAdvanced:
         else:
             self._activate_session(sessions[0].session_id)
 
-        # Save initial GUI state
-        input_c = self.input_text.get("1.0", "end-1c")
-        output_c = self.output_text.get("1.0", "end-1c")
-        self.save_gui_state(input_c, output_c)
-
     def on_close(self):
         self.save_config()
         # Save current session state and persist all sessions
@@ -1293,6 +1288,7 @@ class CalculatorGUIAdvanced:
         self._rebuild_session_tabs()
         self._refresh_variables_tab()
         self._refresh_functions_tab()
+        self._refresh_history_tab()
         self.update_undo_redo_buttons()
 
     def _on_global_variable_changed(self, name, value):
@@ -1483,19 +1479,28 @@ class CalculatorGUIAdvanced:
         self.funcs_text.configure(state=tk.DISABLED)
 
     def _refresh_history_tab(self):
-        """Update the History tab showing what changed between each calculation."""
+        """Update the History tab showing complete calculation snapshots."""
         if not hasattr(self, 'history_text'):
             return
         self.history_text.configure(state=tk.NORMAL)
         self.history_text.delete("1.0", tk.END)
 
-        # Configure tags for diff display
-        self.history_text.tag_config("added", foreground="#4EC9B0")
-        self.history_text.tag_config("removed", foreground="#F44747")
-        self.history_text.tag_config("header", foreground="#569CD6", font=("Consolas", self.font_size, "bold"))
-        self.history_text.tag_config("result", foreground="#6A9955")
-        self.history_text.tag_config("current_marker", foreground="#DCDCAA", font=("Consolas", self.font_size, "bold"))
-        self.history_text.tag_config("tab_name", foreground="#C586C0", font=("Consolas", self.font_size, "bold"))
+        # Configure tags
+        mode = ctk.get_appearance_mode()
+        if mode == "Dark":
+            self.history_text.tag_config("header", foreground="#569CD6", font=("Consolas", self.font_size, "bold"))
+            self.history_text.tag_config("code", foreground="#D4D4D4")
+            self.history_text.tag_config("result", foreground="#6A9955")
+            self.history_text.tag_config("current_marker", foreground="#DCDCAA", font=("Consolas", self.font_size, "bold"))
+            self.history_text.tag_config("tab_name", foreground="#C586C0", font=("Consolas", self.font_size, "bold"))
+            self.history_text.tag_config("separator", foreground="#555555")
+        else:
+            self.history_text.tag_config("header", foreground="#0000FF", font=("Consolas", self.font_size, "bold"))
+            self.history_text.tag_config("code", foreground="#333333")
+            self.history_text.tag_config("result", foreground="#008000")
+            self.history_text.tag_config("current_marker", foreground="#AF00DB", font=("Consolas", self.font_size, "bold"))
+            self.history_text.tag_config("tab_name", foreground="#AF00DB", font=("Consolas", self.font_size, "bold"))
+            self.history_text.tag_config("separator", foreground="#CCCCCC")
 
         # Get current session name
         session_name = ""
@@ -1509,9 +1514,9 @@ class CalculatorGUIAdvanced:
         # Show session name header
         if session_name:
             self.history_text.insert(tk.END, f"📄 {session_name} ", "tab_name")
-            label = "History" if self.language == 'en' else "的修改记录"
+            label = "History" if self.language == 'en' else "的计算历史"
             self.history_text.insert(tk.END, f"{label}\n")
-            self.history_text.insert(tk.END, "═" * 44 + "\n\n")
+            self.history_text.insert(tk.END, "═" * 44 + "\n\n", "separator")
 
         # Get gui_history from current session
         gui_history = []
@@ -1524,9 +1529,9 @@ class CalculatorGUIAdvanced:
             except KeyError:
                 pass
 
-        if gui_history and len(gui_history) > 1:
+        if gui_history and len(gui_history) >= 1:
             count = 0
-            for i in range(len(gui_history) - 1, 0, -1):
+            for i in range(len(gui_history) - 1, -1, -1):
                 inp, out = gui_history[i]
                 if not inp.strip():
                     continue
@@ -1544,32 +1549,17 @@ class CalculatorGUIAdvanced:
                     self.history_text.insert(tk.END, "◀ LATEST ", "current_marker")
                 self.history_text.insert(tk.END, "──\n", "header")
 
-                # Show diff: what changed from previous state
-                prev_inp = gui_history[i - 1][0] if i > 0 else ""
-                cur_lines = set(l.strip() for l in inp.strip().split('\n') if l.strip() and not l.strip().startswith('#'))
-                prev_lines = set(l.strip() for l in prev_inp.strip().split('\n') if l.strip() and not l.strip().startswith('#'))
+                # Show complete input (non-empty, non-comment lines, up to 6 lines)
+                lines = [l for l in inp.strip().split('\n') if l.strip() and not l.strip().startswith('#')]
+                for l in lines[:6]:
+                    display = l.strip()
+                    if len(display) > 60:
+                        display = display[:57] + "..."
+                    self.history_text.insert(tk.END, f"  {display}\n", "code")
+                if len(lines) > 6:
+                    self.history_text.insert(tk.END, f"  ... (+{len(lines)-6} lines)\n", "code")
 
-                added = cur_lines - prev_lines
-                removed = prev_lines - cur_lines
-
-                if added:
-                    for line in list(added)[:4]:
-                        self.history_text.insert(tk.END, f"  + {line}\n", "added")
-                    if len(added) > 4:
-                        self.history_text.insert(tk.END, f"  + ... (+{len(added)-4} more)\n", "added")
-                if removed:
-                    for line in list(removed)[:2]:
-                        self.history_text.insert(tk.END, f"  - {line}\n", "removed")
-                    if len(removed) > 2:
-                        self.history_text.insert(tk.END, f"  - ... (+{len(removed)-2} more)\n", "removed")
-
-                if not added and not removed:
-                    # No code diff (maybe just whitespace change), show input preview
-                    lines = [l for l in inp.strip().split('\n') if l.strip() and not l.strip().startswith('#')]
-                    for l in lines[:2]:
-                        self.history_text.insert(tk.END, f"  {l}\n")
-
-                # Show last result
+                # Show last result line
                 if out.strip():
                     out_lines = [l for l in out.strip().split('\n') if l.strip() and '=' in l]
                     if out_lines:
@@ -1582,8 +1572,8 @@ class CalculatorGUIAdvanced:
                 if count >= 20:
                     break
         else:
-            hint = "No history yet.\nCalculation history will appear here." if self.language == 'en' \
-                else "暂无历史记录。\n计算历史会显示在这里。"
+            hint = "No history yet.\nPress Ctrl+Enter to calculate." if self.language == 'en' \
+                else "暂无历史记录。\n按 Ctrl+Enter 执行计算后会记录在这里。"
             self.history_text.insert(tk.END, hint)
         self.history_text.configure(state=tk.DISABLED)
 
@@ -2118,7 +2108,6 @@ class CalculatorGUIAdvanced:
         self.output_text.configure(state=tk.NORMAL)
         self.output_text.delete("1.0", tk.END)
         self.output_text.configure(state=tk.DISABLED)
-        self.save_gui_state("", "")
         self.last_saved_input = ""
         self.status_var.set("Cleared" if self.language == 'en' else "已清空")
 
@@ -2241,7 +2230,6 @@ comma(1234567)
         self.input_text.unbind('<<Modified>>')
         self.input_text.delete("1.0", tk.END)
         self.input_text.insert("1.0", example)
-        self.save_gui_state(example, "")
         self.last_saved_input = example
         self.input_text.bind('<<Modified>>', self.on_input_modified)
         self.status_var.set("Example loaded" if self.language == 'en' else "已加载示例")
@@ -2258,7 +2246,6 @@ comma(1234567)
                 self.input_text.unbind('<<Modified>>')
                 self.input_text.delete("1.0", tk.END)
                 self.input_text.insert("1.0", content)
-                self.save_gui_state(content, "")
                 self.last_saved_input = content
                 self.input_text.bind('<<Modified>>', self.on_input_modified)
                 self.status_var.set(f"Opened: {os.path.basename(filename)}" if self.language == 'en' else f"已打开: {os.path.basename(filename)}")
@@ -2325,6 +2312,9 @@ comma(1234567)
             session = self.session_manager.get_session(self._current_session_id)
         except KeyError:
             return
+        # Skip if content is identical to the last entry
+        if session.gui_history and session.gui_history[session.gui_history_index] == (input_text, output_text):
+            return
         if session.gui_history_index < len(session.gui_history) - 1:
             session.gui_history = session.gui_history[:session.gui_history_index + 1]
         session.gui_history.append((input_text, output_text))
@@ -2344,8 +2334,6 @@ comma(1234567)
     def auto_save_input(self):
         current_input = self.input_text.get("1.0", "end-1c")
         if current_input != self.last_saved_input:
-            output_content = self.output_text.get("1.0", "end-1c")
-            self.save_gui_state(current_input, output_content)
             self.last_saved_input = current_input
 
     def undo(self):
