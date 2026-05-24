@@ -1312,8 +1312,271 @@ class CalculatorPaperAdvanced:
 
         return '\n'.join(result_lines)
 
+    def _collect_definitions(self, lines: list[str]) -> list[dict]:
+        """第一遍扫描：收集每行的变量定义和引用信息。
+        
+        Scans all lines to identify:
+        - Which variable each line defines (assignment left-hand side)
+        - Which variables each line references (identifiers in expressions)
+        - Whether the line is a comment, empty, or function definition
+        
+        Args:
+            lines: List of input line strings.
+            
+        Returns:
+            List of dicts with keys:
+            - 'defines': str or None (variable name defined on this line)
+            - 'uses': set[str] (variable names referenced in expression)
+            - 'is_comment': bool
+            - 'is_empty': bool
+            - 'is_func_def': bool
+        """
+        # Patterns matching existing parse_line() logic
+        func_def_pattern = re.compile(
+            r'^([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*\(\s*'
+            r'([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
+            r'(?:\s*,\s*[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)*)\s*\)\s*=\s*(.+)$'
+        )
+        assignment_pattern = re.compile(
+            r'^([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*=\s*(.+)$'
+        )
+        variable_ref_pattern = re.compile(
+            r'\b([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\b'
+        )
+        # Built-in function names that are not variable references
+        builtin_names = frozenset([
+            'swap', 'bitmap', 'hex', 'comma', 'workday', 'global',
+            'True', 'False', 'None',
+        ])
+        # Function-style call pattern (standalone calls like hex(...), bitmap(...))
+        func_call_pattern = re.compile(
+            r'^(hex|bitmap|comma|workday|global)\s*\(', re.IGNORECASE
+        )
+
+        result = []
+        for line in lines:
+            stripped = line.strip()
+
+            # Empty line
+            if not stripped:
+                result.append({
+                    'defines': None,
+                    'uses': set(),
+                    'is_comment': False,
+                    'is_empty': True,
+                    'is_func_def': False,
+                })
+                continue
+
+            # Comment line
+            if stripped.startswith('#'):
+                result.append({
+                    'defines': None,
+                    'uses': set(),
+                    'is_comment': True,
+                    'is_empty': False,
+                    'is_func_def': False,
+                })
+                continue
+
+            # Remove inline comments for analysis
+            expr_line = stripped
+            if '#' in expr_line:
+                expr_line = expr_line.split('#')[0].strip()
+
+            # Function definition: func(x, y) = expr
+            func_match = func_def_pattern.match(expr_line)
+            if func_match:
+                result.append({
+                    'defines': None,
+                    'uses': set(),
+                    'is_comment': False,
+                    'is_empty': False,
+                    'is_func_def': True,
+                })
+                continue
+
+            # Standalone built-in function calls (hex(...), bitmap(...), etc.)
+            # These don't define variables but may reference them
+            is_builtin_call = bool(func_call_pattern.match(expr_line))
+
+            # Check for assignment: variable_name = expression
+            defines = None
+            expr_part = expr_line  # The expression to scan for variable references
+
+            if not is_builtin_call:
+                assign_match = assignment_pattern.match(expr_line)
+                if assign_match:
+                    var_name = assign_match.group(1)
+                    # Validate it's not a reserved keyword
+                    if (var_name not in builtin_names and
+                            not self._is_reserved_keyword(var_name)):
+                        defines = var_name
+                        expr_part = assign_match.group(2)  # Only scan RHS for uses
+
+            # Collect variable references from the expression part
+            uses = set()
+            for m in variable_ref_pattern.finditer(expr_part):
+                name = m.group(1)
+                # Skip built-in names, reserved keywords, hex/bin literals
+                if name in builtin_names:
+                    continue
+                if self._is_reserved_keyword(name):
+                    continue
+                if re.match(r'^0[xXbB]', name):
+                    continue
+                # Note: do NOT exclude 'defines' here — self-reference (a = a + 1)
+                # needs to be detected as circular dependency by _topological_sort()
+                uses.add(name)
+
+            result.append({
+                'defines': defines,
+                'uses': uses,
+                'is_comment': False,
+                'is_empty': False,
+                'is_func_def': False,
+            })
+
+        return result
+
+    def _topological_sort(self, line_infos: list[dict]) -> tuple[list[int], set[int]]:
+        """对赋值行和表达式行进行拓扑排序。
+
+        基于 _collect_definitions() 的结果构建依赖图，使用 Kahn 算法（BFS）
+        进行拓扑排序，并检测循环依赖。
+
+        Args:
+            line_infos: _collect_definitions() 返回的行信息列表。
+
+        Returns:
+            (eval_order, circular_lines):
+            - eval_order: 按依赖顺序排列的行索引列表
+            - circular_lines: 存在循环依赖的行索引集合
+        """
+        from collections import deque
+
+        # Identify lines that participate in the dependency graph
+        # Exclude comment lines, empty lines, and function definition lines
+        active_lines = []
+        for i, info in enumerate(line_infos):
+            if info['is_comment'] or info['is_empty'] or info['is_func_def']:
+                continue
+            active_lines.append(i)
+
+        # Build a mapping: variable_name -> line_index that defines it
+        var_to_line = {}
+        for i in active_lines:
+            defines = line_infos[i]['defines']
+            if defines is not None:
+                var_to_line[defines] = i
+
+        # Build adjacency list (dependencies): graph[A] = set of lines A depends on
+        # If line A uses variable X defined on line B, then A depends on B (edge A → B)
+        graph = {i: set() for i in active_lines}
+        # Also track in-degree for Kahn's algorithm
+        in_degree = {i: 0 for i in active_lines}
+
+        for i in active_lines:
+            uses = line_infos[i]['uses']
+            for var_name in uses:
+                if var_name in var_to_line:
+                    dep_line = var_to_line[var_name]
+                    if dep_line != i:
+                        # A depends on B: edge from A to B in dependency sense
+                        # For Kahn's: we need "B must come before A"
+                        # So in the "must come before" graph: edge B → A
+                        # We track: graph[i] contains lines that i depends on
+                        graph[i].add(dep_line)
+                    else:
+                        # Self-reference: a = a + 1
+                        # This creates a self-loop → circular dependency
+                        graph[i].add(i)
+
+        # Build reverse adjacency list for Kahn's algorithm
+        # reverse_graph[B] = set of lines that depend on B
+        reverse_graph = {i: set() for i in active_lines}
+        for i in active_lines:
+            for dep in graph[i]:
+                if dep in reverse_graph:
+                    reverse_graph[dep].add(i)
+                    in_degree[i] += 1
+
+        # Kahn's algorithm (BFS topological sort)
+        queue = deque()
+        for i in active_lines:
+            if in_degree[i] == 0:
+                queue.append(i)
+
+        eval_order = []
+        while queue:
+            node = queue.popleft()
+            eval_order.append(node)
+            # For each line that depends on this node
+            for dependent in reverse_graph[node]:
+                in_degree[dependent] -= 1
+                if in_degree[dependent] == 0:
+                    queue.append(dependent)
+
+        # Detect circular dependencies: lines not in eval_order have cycles
+        processed = set(eval_order)
+        circular_lines = set()
+        for i in active_lines:
+            if i not in processed:
+                circular_lines.add(i)
+
+        return eval_order, circular_lines
+
+    def _evaluate_in_order(self, lines: list[str], line_infos: list[dict],
+                           eval_order: list[int], circular_lines: set[int]):
+        """按拓扑序计算表达式，将结果存入 self.results。
+
+        For each line index in eval_order, calls self.parse_line() to compute
+        the result. For lines in circular_lines, generates a circular dependency
+        error message. Comment lines, empty lines, and function definition lines
+        get None results.
+
+        Args:
+            lines: The original input lines.
+            line_infos: Output from _collect_definitions().
+            eval_order: Output from _topological_sort() - line indices in
+                       dependency-resolved order.
+            circular_lines: Output from _topological_sort() - line indices
+                           with circular dependencies.
+        """
+        # Initialize results and lines lists
+        self.results = [None] * len(lines)
+        self.lines = [''] * len(lines)
+
+        # Store original line text for all lines
+        for i, line in enumerate(lines):
+            self.lines[i] = line.strip()
+
+        # Evaluate lines in topological order
+        for idx in eval_order:
+            line = lines[idx]
+            result, label, extra_info, bit_info, use_bitmap, hex_info = self.parse_line(line)
+
+            if result is not None:
+                self.results[idx] = (result, label, extra_info, bit_info, use_bitmap, hex_info)
+            else:
+                self.results[idx] = (None, label, extra_info, bit_info, use_bitmap, hex_info)
+
+        # Mark circular dependency lines with error
+        for idx in circular_lines:
+            info = line_infos[idx]
+            label = info['defines']
+            error_msg = "错误: 循环依赖"
+            self.results[idx] = (None, label, error_msg, None, False, None)
+
+        # Comment lines, empty lines, and function definition lines keep None results
+        # (already initialized to None above)
+
     def process_text(self, text, preset_variables=None, preset_functions=None):
-        """Process multi-line text
+        """Process multi-line text with forward reference support.
+        
+        Uses topological sort to resolve variable dependencies,
+        allowing variables defined on later lines to be referenced
+        by earlier lines.
         
         Args:
             text: The multi-line input text to process.
@@ -1325,37 +1588,25 @@ class CalculatorPaperAdvanced:
         self.lines = []
         self.results = []
         self.variables = dict(preset_variables) if preset_variables else {}
-        self.functions = dict(preset_functions) if preset_functions else {}  # Reset user-defined functions
+        self.functions = dict(preset_functions) if preset_functions else {}
 
         lines = text.strip().split('\n')
 
-        for line in lines:
-            original_line = line.strip()
+        # Phase 1: Collect all definitions and build dependency info
+        line_infos = self._collect_definitions(lines)
 
-            # Empty line
-            if not original_line:
-                self.lines.append('')
-                self.results.append(None)
-                continue
+        # Phase 1.5: Process function definitions first so they are registered
+        # before other lines that may call them
+        for i, info in enumerate(line_infos):
+            if info['is_func_def']:
+                self.parse_line(lines[i])
 
-            # Comment line
-            if original_line.startswith('#'):
-                self.lines.append(original_line)
-                self.results.append(None)
-                continue
+        # Phase 2: Topological sort to determine evaluation order
+        eval_order, circular_lines = self._topological_sort(line_infos)
 
-            # Parse expression
-            result, label, extra_info, bit_info, use_bitmap, hex_info = self.parse_line(line)
+        # Phase 3: Evaluate in dependency order
+        self._evaluate_in_order(lines, line_infos, eval_order, circular_lines)
 
-            self.lines.append(original_line)
-
-            if result is not None:
-                # Calculation succeeded
-                self.results.append((result, label, extra_info, bit_info, use_bitmap, hex_info))
-            else:
-                # Calculation failed or special command
-                self.results.append((None, label, extra_info, bit_info, use_bitmap, hex_info))
-        
         # Save current state to history
         self.save_state()
     

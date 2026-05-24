@@ -194,6 +194,7 @@ class Session:
     
     Each session has its own calculator engine instance, input/output text,
     and local variables. Sessions are identified by a unique UUID.
+    Each session also maintains its own independent undo/redo history stack.
     """
     session_id: str
     name: str
@@ -202,6 +203,8 @@ class Session:
     variables: dict = field(default_factory=dict)
     calculator: CalculatorPaperAdvanced = field(default_factory=CalculatorPaperAdvanced)
     created_at: datetime = field(default_factory=datetime.now)
+    gui_history: list = field(default_factory=list)
+    gui_history_index: int = -1
 
 
 class SessionManager:

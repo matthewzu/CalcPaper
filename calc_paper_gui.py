@@ -357,9 +357,7 @@ class CalculatorGUIAdvanced:
         # Create calculator instance (will be replaced per-session)
         self.calculator = CalculatorPaperAdvanced(language=self.language)
 
-        # GUI-specific history
-        self.gui_history = []
-        self.gui_history_index = -1
+        # GUI-specific state
         self.last_saved_input = ""
 
         # Create widgets
@@ -1288,6 +1286,7 @@ class CalculatorGUIAdvanced:
         self._rebuild_session_tabs()
         self._refresh_variables_tab()
         self._refresh_functions_tab()
+        self.update_undo_redo_buttons()
 
     def _on_global_variable_changed(self, name, value):
         """Callback when a global variable or function changes. Refresh all tabs."""
@@ -1507,17 +1506,28 @@ class CalculatorGUIAdvanced:
             self.history_text.insert(tk.END, f"{label}\n")
             self.history_text.insert(tk.END, "═" * 44 + "\n\n")
 
-        if self.gui_history and len(self.gui_history) > 1:
+        # Get gui_history from current session
+        gui_history = []
+        gui_history_index = -1
+        if self._current_session_id is not None:
+            try:
+                session = self.session_manager.get_session(self._current_session_id)
+                gui_history = session.gui_history
+                gui_history_index = session.gui_history_index
+            except KeyError:
+                pass
+
+        if gui_history and len(gui_history) > 1:
             count = 0
-            for i in range(len(self.gui_history) - 1, 0, -1):
-                inp, out = self.gui_history[i]
+            for i in range(len(gui_history) - 1, 0, -1):
+                inp, out = gui_history[i]
                 if not inp.strip():
                     continue
                 count += 1
 
                 # Current position marker
-                is_current = (i == self.gui_history_index)
-                at_latest = (self.gui_history_index == len(self.gui_history) - 1)
+                is_current = (i == gui_history_index)
+                at_latest = (gui_history_index == len(gui_history) - 1)
 
                 # Header
                 self.history_text.insert(tk.END, f"── #{count} ", "header")
@@ -1528,7 +1538,7 @@ class CalculatorGUIAdvanced:
                 self.history_text.insert(tk.END, "──\n", "header")
 
                 # Show diff: what changed from previous state
-                prev_inp = self.gui_history[i - 1][0] if i > 0 else ""
+                prev_inp = gui_history[i - 1][0] if i > 0 else ""
                 cur_lines = set(l.strip() for l in inp.strip().split('\n') if l.strip() and not l.strip().startswith('#'))
                 prev_lines = set(l.strip() for l in prev_inp.strip().split('\n') if l.strip() and not l.strip().startswith('#'))
 
@@ -2302,13 +2312,19 @@ comma(1234567)
     # ==================== Undo/Redo ====================
 
     def save_gui_state(self, input_text, output_text):
-        if self.gui_history_index < len(self.gui_history) - 1:
-            self.gui_history = self.gui_history[:self.gui_history_index + 1]
-        self.gui_history.append((input_text, output_text))
-        self.gui_history_index = len(self.gui_history) - 1
-        if len(self.gui_history) > 50:
-            self.gui_history.pop(0)
-            self.gui_history_index -= 1
+        if self._current_session_id is None:
+            return
+        try:
+            session = self.session_manager.get_session(self._current_session_id)
+        except KeyError:
+            return
+        if session.gui_history_index < len(session.gui_history) - 1:
+            session.gui_history = session.gui_history[:session.gui_history_index + 1]
+        session.gui_history.append((input_text, output_text))
+        session.gui_history_index = len(session.gui_history) - 1
+        if len(session.gui_history) > 50:
+            session.gui_history.pop(0)
+            session.gui_history_index -= 1
         self.update_undo_redo_buttons()
 
     def on_input_modified(self, event):
@@ -2327,9 +2343,15 @@ comma(1234567)
 
     def undo(self):
         self._switch_to_editor()
-        if self.gui_history_index > 0:
-            self.gui_history_index -= 1
-            inp, out = self.gui_history[self.gui_history_index]
+        if self._current_session_id is None:
+            return
+        try:
+            session = self.session_manager.get_session(self._current_session_id)
+        except KeyError:
+            return
+        if session.gui_history_index > 0:
+            session.gui_history_index -= 1
+            inp, out = session.gui_history[session.gui_history_index]
             self.input_text.unbind('<<Modified>>')
             self.input_text.delete("1.0", tk.END)
             self.input_text.insert("1.0", inp)
@@ -2346,9 +2368,15 @@ comma(1234567)
 
     def redo(self):
         self._switch_to_editor()
-        if self.gui_history_index < len(self.gui_history) - 1:
-            self.gui_history_index += 1
-            inp, out = self.gui_history[self.gui_history_index]
+        if self._current_session_id is None:
+            return
+        try:
+            session = self.session_manager.get_session(self._current_session_id)
+        except KeyError:
+            return
+        if session.gui_history_index < len(session.gui_history) - 1:
+            session.gui_history_index += 1
+            inp, out = session.gui_history[session.gui_history_index]
             self.input_text.unbind('<<Modified>>')
             self.input_text.delete("1.0", tk.END)
             self.input_text.insert("1.0", inp)
@@ -2364,10 +2392,19 @@ comma(1234567)
             self._refresh_history_tab()
 
     def update_undo_redo_buttons(self):
+        can_undo = False
+        can_redo = False
+        if self._current_session_id is not None:
+            try:
+                session = self.session_manager.get_session(self._current_session_id)
+                can_undo = session.gui_history_index > 0
+                can_redo = session.gui_history_index < len(session.gui_history) - 1
+            except KeyError:
+                pass
         if hasattr(self, 'undo_button'):
-            self.undo_button.configure(state=tk.NORMAL if self.gui_history_index > 0 else tk.DISABLED)
+            self.undo_button.configure(state=tk.NORMAL if can_undo else tk.DISABLED)
         if hasattr(self, 'redo_button'):
-            self.redo_button.configure(state=tk.NORMAL if self.gui_history_index < len(self.gui_history) - 1 else tk.DISABLED)
+            self.redo_button.configure(state=tk.NORMAL if can_redo else tk.DISABLED)
 
     # ==================== Autocomplete ====================
 
@@ -2565,6 +2602,13 @@ comma(1234567)
   6.5%, 10%               Percentage
   # comment               Comment line
 
+=== Forward References ===
+  Variables can be used before they are defined:
+    total = price * qty   (price and qty defined below)
+    price = 50
+    qty = 20              total = 1000
+  Circular dependencies are detected and reported as errors.
+
 === Number Formats ===
   0xFF, 0x1A2B            Hexadecimal
   0b1010, 0b11110000      Binary
@@ -2695,6 +2739,13 @@ comma(1234567)
   变量名 = 表达式          变量赋值
   6.5%, 10%               百分数
   # 注释                   注释行
+
+=== 前向引用 ===
+  变量可以在定义之前使用：
+    总价 = 单价 * 数量     （单价和数量在下面定义）
+    单价 = 50
+    数量 = 20              总价 = 1000
+  循环依赖会被自动检测并报错。
 
 === 数值格式 ===
   0xFF, 0x1A2B            16进制

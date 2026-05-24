@@ -33,6 +33,18 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
+          ### 🆕 New in v3.3 / v3.3 新功能
+          - 🔄 **Forward References / 前向引用**
+            - Variables can be used before definition / 变量可以在定义之前使用
+            - Topological sort resolves dependencies / 拓扑排序自动解析依赖
+            - Circular dependency detection / 循环依赖自动检测
+          - 📝 **Comments / 注释语法**
+            - Full-line: `# comment` / 整行注释
+            - Inline: `expr # comment` / 行内注释
+          - 🔒 **Per-tab undo/redo history / 撤销历史按标签页隔离**
+            - Each tab has independent undo history / 每个标签页独立历史栈
+            - Up to 50 entries per tab / 每标签页最多 50 条记录
+
           ### 🆕 New in v3.2 / v3.2 新功能
           - 🔧 Function name autocomplete / 函数名自动补齐
             - Auto-suggest local, global, and built-in functions / 自动补全局部、全局和内置函数
@@ -95,6 +107,7 @@ jobs:
 
           ### ✅ All Features / 全部功能
           - 🧮 Variable references / 变量引用
+          - 🔄 Forward references / 前向引用 (topological sort / 拓扑排序)
           - 🧮 User-defined functions / 自定义函数 (implicit multiplication / 隐式乘法)
           - 🌐 global() cross-tab variable & function sharing / 跨标签全局变量和函数
           - 🔧 Function autocomplete / 函数名自动补齐

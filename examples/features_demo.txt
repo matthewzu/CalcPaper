@@ -144,3 +144,26 @@ g(5)
 # 函数结果赋值 / Assign function result
 area(r) = 3.14 * r * r
 circle = area(5)
+
+# ========================================
+# 13. 前向引用 / Forward Reference 🆕
+# ========================================
+# 变量可以在定义之前引用
+# Variables can be referenced before their definition
+
+总价 = 单价 * 数量
+单价 = 50
+数量 = 20
+
+# 多层依赖链也能正确解析
+# Multi-level dependency chains work correctly
+面积 = 长 * 宽
+长 = 基数 * 2
+宽 = 基数 + 3
+基数 = 5
+
+# 循环依赖会被检测并报错
+# Circular dependencies are detected and reported
+# x = y + 1
+# y = x + 1
+# → 错误: 循环依赖

@@ -102,7 +102,7 @@ class DependencyGraph:
 
             # Find all lines that use any of these variables
             for line_idx, used_vars in self._uses.items():
-                if line_idx not in affected and line_idx > current_line:
+                if line_idx not in affected:
                     if used_vars & defined_vars:
                         affected.add(line_idx)
                         queue.append(line_idx)

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-3.3.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -21,7 +21,7 @@
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, date/time arithmetic, hexadecimal/binary numbers, byte order swapping, multi-session tabs, global variables, and more — making complex calculations as simple as writing on paper.
 
-Version: 3.2
+Version: 3.3
 
 ### 🚀 Quick Start
 
@@ -76,7 +76,8 @@ python main.py --version
 ### ✨ Key Features
 
 - 🧮 **Variable References** - Define variables and use them later
-- 🧮 🆕 **User-Defined Functions** - Define `f(x,y) = expr` and call `f(1,2)` with implicit multiplication
+- 🔄 🆕 **Forward References** - Variables can be used before they are defined (topological sort)
+- 🧮 **User-Defined Functions** - Define `f(x,y) = expr` and call `f(1,2)` with implicit multiplication
 - 🔧 🆕 **Function Autocomplete** - Auto-suggest functions when typing, with cursor placed between parens
 - 🌐 🆕 **Global Functions** - `global(func)` shares functions across all tabs
 - 📑 🆕 **Functions Tab** - View all local, global, and built-in functions in one panel
@@ -109,6 +110,36 @@ python main.py --version
 - 🔤 **Font Scaling** - GUI supports font size adjustment
 - 🔄 **Undo/Redo** - Support undo and redo operations
 - 💡 **Smart Comments** - Auto hex format for bitwise operations
+
+### 🆕 What's New in v3.3
+
+#### Forward References
+
+Variables can now be referenced before they are defined. The calculation engine uses topological sorting to resolve dependencies:
+
+```python
+# Variables used before definition — works!
+total = price * qty    # price and qty defined below
+price = 50
+qty = 20               # total = 1000
+
+# Multi-level dependency chains
+area = length * width
+length = base * 2
+width = base + 3
+base = 5               # area = 10 * 8 = 80
+```
+
+- Circular dependencies are detected and reported: `a = b + 1`, `b = a + 1` → Error
+- All variables within a tab are globally available regardless of line order
+
+#### Per-Tab Undo/Redo History
+
+Each tab now maintains its own independent undo/redo history:
+
+- Undo in Tab A does not affect Tab B
+- Switching tabs preserves each tab's history state
+- Each tab maintains up to 50 history entries independently
 
 ### 🆕 What's New in v3.2
 
@@ -477,7 +508,7 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、日期/时间运算、16进制/2进制数值、字节序转换、多会话标签页、全局变量共享等功能，让复杂计算像在纸上写算式一样简单。
 
-版本：3.2
+版本：3.3
 
 ### 🚀 快速开始
 
@@ -532,7 +563,8 @@ python main.py --version
 ### ✨ 核心特性
 
 - 🧮 **变量引用** - 定义变量，后续直接使用
-- 🧮 🆕 **自定义函数** - 定义 `f(x,y) = 表达式` 并调用 `f(1,2)`，支持隐式乘法
+- 🔄 🆕 **前向引用** - 变量可以在定义之前使用（拓扑排序）
+- 🧮 **自定义函数** - 定义 `f(x,y) = 表达式` 并调用 `f(1,2)`，支持隐式乘法
 - 🔧 🆕 **函数名自动补齐** - 输入时自动补全函数名，选中后光标定位到括号内
 - 🌐 🆕 **全局函数共享** - `global(函数名)` 跨标签页共享函数
 - 📑 🆕 **函数列表标签页** - 在一个面板中查看所有局部、全局和内置函数
@@ -565,6 +597,36 @@ python main.py --version
 - 🔤 **字体缩放** - GUI 支持字体放大缩小
 - 🔄 **撤销/恢复** - 支持撤销和恢复操作
 - 💡 **智能注释** - 位运算自动显示16进制格式
+
+### 🆕 v3.3 新功能详解
+
+#### 前向引用
+
+变量现在可以在定义行之前被引用。计算引擎使用拓扑排序自动解析依赖关系：
+
+```python
+# 变量在定义之前使用 — 完全支持！
+总价 = 单价 * 数量    # 单价和数量在下面定义
+单价 = 50
+数量 = 20             # 总价 = 1000
+
+# 多层依赖链
+面积 = 长 * 宽
+长 = 基数 * 2
+宽 = 基数 + 3
+基数 = 5              # 面积 = 10 * 8 = 80
+```
+
+- 循环依赖自动检测并报错：`a = b + 1`, `b = a + 1` → 错误: 循环依赖
+- 标签页内所有变量全局可用，不受行顺序限制
+
+#### 撤销/恢复历史按标签页隔离
+
+每个标签页现在维护独立的撤销/恢复历史：
+
+- 在标签页 A 中撤销不会影响标签页 B
+- 切换标签页后保留各自的历史状态
+- 每个标签页独立维护最多 50 条历史记录
 
 ### 🆕 v3.2 新功能详解
 
