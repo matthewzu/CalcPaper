@@ -617,6 +617,9 @@ class CalculatorGUIAdvanced:
         else:
             self._activate_session(sessions[0].session_id)
 
+        # Ensure history tab is refreshed after full initialization
+        self._refresh_history_tab()
+
     def on_close(self):
         self.save_config()
         # Save current session state and persist all sessions
@@ -947,6 +950,9 @@ class CalculatorGUIAdvanced:
         else:
             self.undo_button.configure(state=tk.DISABLED)
             self.redo_button.configure(state=tk.DISABLED)
+        # Refresh history tab content when switching to it
+        if hasattr(self, '_history_tab_name') and current == self._history_tab_name:
+            self._refresh_history_tab()
 
     # ==================== Multi-Session Tab Management ====================
 
@@ -1747,6 +1753,7 @@ class CalculatorGUIAdvanced:
 
         # Tab: History (shows calculation history)
         hist_tab_name = "History" if self.language == 'en' else "历史"
+        self._history_tab_name = hist_tab_name
         self.tabview.add(hist_tab_name)
         hist_tab = self.tabview.tab(hist_tab_name)
         hist_tab.grid_rowconfigure(0, weight=1)
