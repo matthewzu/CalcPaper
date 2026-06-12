@@ -401,14 +401,8 @@ class CalculatorGUIAdvanced:
         # Start background update check (2 second delay)
         self.root.after(2000, self._start_update_check)
 
-        # Show Git warning if not available
-        if self.history_store.warning_message:
-            self.root.after(500, lambda: self._toast(
-                "⚠ Git 未安装，请安装以启用历史功能: git-scm.com/downloads"
-                if self.language == 'zh' else
-                "⚠ Git not found. Install Git for history: git-scm.com/downloads",
-                duration=8000
-            ))
+        # Show Git warning if not available (check after async init completes)
+        self.root.after(2000, self._check_git_warning)
 
     # ==================== Dialog Focus Management ====================
 
@@ -637,6 +631,20 @@ class CalculatorGUIAdvanced:
 
     def _start_update_check(self):
         UpdateChecker(VERSION, self.language, self._show_update_notification).check()
+
+    def _check_git_warning(self):
+        """Check if git init thread finished and show warning if needed."""
+        if self.history_store._init_thread.is_alive():
+            # Still initializing, check again later
+            self.root.after(500, self._check_git_warning)
+            return
+        if self.history_store.warning_message:
+            self._toast(
+                "⚠ Git 未安装，请安装以启用历史功能: git-scm.com/downloads"
+                if self.language == 'zh' else
+                "⚠ Git not found. Install Git for history: git-scm.com/downloads",
+                duration=8000
+            )
 
     def manual_update_check(self):
         """Manual update check with button disable and status feedback."""
@@ -2733,6 +2741,8 @@ comma(1234567)
   - Data directory defaults to ~/.calcpaper, changeable in Settings
   - Variables tab shows all defined variables after calculation
   - History tab shows colored diff of changes between calculations
+  - Single instance: only one CalcPaper window can run at a time
+  - Git history initializes in background without blocking startup
 """
 
     def _help_text_zh(self):
@@ -2874,10 +2884,35 @@ comma(1234567)
   - 变量面板显示当前标签页的所有已定义变量
   - 历史面板以彩色 diff 显示当前标签的计算变更
   - 计算历史以 Git 仓库持久化（需安装 Git）
+  - 单实例运行：同一时间只能打开一个 CalcPaper 窗口
+  - Git 历史在后台线程初始化，不阻塞启动
 """
 
 
 def main():
+    # Single instance lock - prevent opening multiple instances
+    lock_file = os.path.join(os.path.expanduser("~"), ".calcpaper", ".lock")
+    os.makedirs(os.path.dirname(lock_file), exist_ok=True)
+
+    if sys.platform == "win32":
+        # On Windows, use a named mutex for reliable single-instance detection
+        import ctypes
+        _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "CalcPaper_SingleInstance_Mutex")
+        if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            # Another instance is running, try to bring it to front and exit
+            ctypes.windll.kernel32.CloseHandle(_mutex)
+            sys.exit(0)
+    else:
+        # On Unix, use file lock (fcntl)
+        import fcntl
+        _lock_fp = open(lock_file, 'w')
+        try:
+            fcntl.flock(_lock_fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _lock_fp.write(str(os.getpid()))
+            _lock_fp.flush()
+        except (IOError, OSError):
+            sys.exit(0)
+
     ctk.set_default_color_theme("blue")
     root = ctk.CTk()
     app = CalculatorGUIAdvanced(root)

@@ -2,6 +2,19 @@
 
 # 更新日志 / Changelog
 
+## [3.5.0] - 2026-06-12
+
+### 修复 / Fixed
+- 🛠️ **修复启动时 Git 控制台窗口闪烁 (Fix Git console window flash on startup)**
+  - 在 Windows 上所有 `subprocess.run` 调用 git 时添加 `CREATE_NO_WINDOW` 标志
+  - 彻底消除启动和使用过程中黑色控制台窗口一闪而过的现象
+- 🛠️ **修复启动卡顿 (Fix startup hang caused by blocking git init)**
+  - 将 Git 可用性检查和仓库初始化移到后台线程
+  - 启动时 UI 不再被 git 操作阻塞，初始化完成前自动使用内存模式
+- 🛠️ **修复更新后可能打开两个实例 (Fix duplicate instances after update restart)**
+  - 新增单实例锁机制：Windows 使用 Named Mutex，Unix 使用 fcntl 文件锁
+  - 第二个实例检测到已有实例运行时直接退出
+
 ## [3.4.1] - 2026-05-24
 
 ### 改进 / Improved

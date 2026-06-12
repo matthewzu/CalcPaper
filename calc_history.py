@@ -17,6 +17,7 @@ the Free Software Foundation, either version 3 of the License, or
 from __future__ import annotations
 
 import os
+import sys
 import subprocess
 import logging
 from dataclasses import dataclass, field
@@ -25,6 +26,9 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Hide console window on Windows when calling git
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 @dataclass
@@ -69,15 +73,23 @@ class GitHistoryStore:
         """
         self._repo_path = Path(os.path.expanduser(repo_path))
         self._git_available = False
+        self._git_ready = False  # True once async init completes
         self._warning_message: Optional[str] = None
         self._memory_history: list[HistoryEntry] = []
         self._memory_snapshots: dict[str, tuple[str, str]] = {}  # commit_hash -> (input, output)
         self._memory_counter = 0
 
-        # Check Git availability and initialize repo
+        # Start git check and init in background thread to avoid blocking UI
+        import threading
+        self._init_thread = threading.Thread(target=self._async_init, daemon=True)
+        self._init_thread.start()
+
+    def _async_init(self):
+        """Background initialization: check git and init repo."""
         self._git_available = self._check_git_available()
         if self._git_available:
             self._init_repo()
+            self._git_ready = True
         else:
             self._warning_message = (
                 "⚠ Git 未安装，历史记录仅保存在内存中。\n"
@@ -90,7 +102,7 @@ class GitHistoryStore:
         Returns:
             True if Git is available and repo is initialized, False otherwise.
         """
-        return self._git_available
+        return self._git_available and self._git_ready
 
     @property
     def warning_message(self) -> Optional[str]:
@@ -124,7 +136,7 @@ class GitHistoryStore:
         if message is None:
             message = self._generate_commit_message(timestamp, input_text)
 
-        if self._git_available:
+        if self._git_available and self._git_ready:
             return self._git_commit(session_id, input_text, output_text, message, timestamp)
         else:
             return self._memory_commit(session_id, input_text, output_text, message, timestamp)
@@ -140,7 +152,7 @@ class GitHistoryStore:
         Returns:
             True if content has changed, False if identical to last commit.
         """
-        if self._git_available:
+        if self._git_available and self._git_ready:
             return self._git_has_changes(session_id, input_text, output_text)
         else:
             return self._memory_has_changes(session_id, input_text, output_text)
@@ -155,7 +167,7 @@ class GitHistoryStore:
         Returns:
             List of HistoryEntry objects, newest first.
         """
-        if self._git_available:
+        if self._git_available and self._git_ready:
             return self._git_get_history(session_id, limit)
         else:
             return self._memory_get_history(session_id, limit)
@@ -169,7 +181,7 @@ class GitHistoryStore:
         Returns:
             DiffResult containing the diff lines.
         """
-        if self._git_available:
+        if self._git_available and self._git_ready:
             return self._git_get_diff(commit_hash)
         else:
             return self._memory_get_diff(commit_hash)
@@ -183,7 +195,7 @@ class GitHistoryStore:
         Returns:
             Tuple of (input_text, output_text) from the commit.
         """
-        if self._git_available:
+        if self._git_available and self._git_ready:
             return self._git_restore(commit_hash)
         else:
             return self._memory_restore(commit_hash)
@@ -200,6 +212,7 @@ class GitHistoryStore:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                creationflags=_SUBPROCESS_FLAGS,
             )
             return result.returncode == 0
         except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
@@ -247,6 +260,7 @@ class GitHistoryStore:
             text=True,
             input=input_text,
             timeout=30,
+            creationflags=_SUBPROCESS_FLAGS,
         )
 
     # -------------------------------------------------------------------------
@@ -280,6 +294,7 @@ class GitHistoryStore:
                 capture_output=True,
                 text=True,
                 timeout=30,
+                creationflags=_SUBPROCESS_FLAGS,
                 env={**os.environ,
                      "GIT_AUTHOR_DATE": env_date,
                      "GIT_COMMITTER_DATE": env_date},

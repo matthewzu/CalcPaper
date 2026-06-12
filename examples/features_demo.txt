@@ -1,4 +1,4 @@
-# CalcPaper v3.4 功能演示
+# CalcPaper v3.5 功能演示
 # Features Demo
 
 # ========================================
@@ -182,3 +182,13 @@ circle = area(5)
 #   Close and reopen the app — history is fully restored
 # - 每个标签页独立维护最多 50 条历史
 #   Each tab maintains up to 50 history entries independently
+
+# ========================================
+# 15. 启动与稳定性 / Startup & Stability 🆕 v3.5
+# ========================================
+# - Git 操作在后台线程初始化，不阻塞 UI 启动
+#   Git initialization runs in background thread, UI is never blocked
+# - Windows 上 git 子进程不再闪烁控制台窗口
+#   Git subprocess calls no longer flash a console window on Windows
+# - 单实例锁：同一时间只能运行一个 CalcPaper
+#   Single-instance lock: only one CalcPaper can run at a time

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-3.4.1-blue.svg)
+![Version](https://img.shields.io/badge/version-3.5.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6+-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange.svg)
@@ -21,7 +21,7 @@
 
 CalcPaper is a smart calculator designed for programmers, supporting variable references, bitwise operations, date/time arithmetic, hexadecimal/binary numbers, byte order swapping, multi-session tabs, global variables, and more — making complex calculations as simple as writing on paper.
 
-Version: 3.4
+Version: 3.5
 
 ### 🚀 Quick Start
 
@@ -111,6 +111,15 @@ python main.py --version
 - 💾 🆕 **Persistent History** - Undo/redo history survives app restart
 - 🔄 **Undo/Redo** - Support undo and redo operations
 - 💡 **Smart Comments** - Auto hex format for bitwise operations
+- 🔒 🆕 **Single Instance Lock** - Prevents opening duplicate instances
+
+### 🆕 What's New in v3.5
+
+#### Startup & Stability Improvements
+
+- Fixed Git console window flashing on startup (Windows) — all git subprocess calls now use `CREATE_NO_WINDOW`
+- Fixed startup hang — git initialization moved to background thread, UI is no longer blocked
+- Fixed duplicate instances opening after update restart — added single-instance lock (Windows Named Mutex / Unix fcntl)
 
 ### 🆕 What's New in v3.4
 
@@ -521,7 +530,7 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 CalcPaper（计算稿纸）是一款专为程序员设计的智能计算器，支持变量引用、位运算、日期/时间运算、16进制/2进制数值、字节序转换、多会话标签页、全局变量共享等功能，让复杂计算像在纸上写算式一样简单。
 
-版本：3.4
+版本：3.5
 
 ### 🚀 快速开始
 
@@ -611,6 +620,15 @@ python main.py --version
 - 💾 🆕 **历史记录持久化** - 撤销/恢复历史跨会话保存，重启后可继续
 - 🔄 **撤销/恢复** - 支持撤销和恢复操作
 - 💡 **智能注释** - 位运算自动显示16进制格式
+- 🔒 🆕 **单实例锁** - 防止重复打开多个实例
+
+### 🆕 v3.5 新功能详解
+
+#### 启动与稳定性改进
+
+- 修复 Windows 启动时 Git 控制台窗口闪烁 — 所有 git 子进程调用添加 `CREATE_NO_WINDOW` 标志
+- 修复启动卡顿 — Git 初始化移到后台线程，UI 不再被阻塞
+- 修复更新后重启可能打开两个实例 — 新增单实例锁（Windows Named Mutex / Unix fcntl 文件锁）
 
 ### 🆕 v3.4 新功能详解
 
