@@ -2,6 +2,14 @@
 
 # 更新日志 / Changelog
 
+## [3.5.1] - 2026-06-18
+
+### 改进 / Improved
+- 🔄 **取消自动重启，改为手动重启 (Remove auto-restart, prompt manual reopen)**
+  - 更新下载完成后不再自动重启（彻底解决 PyInstaller `_MEI` 临时目录 DLL 加载失败问题）
+  - 点击确定后程序退出，用户手动重新打开即为新版本
+  - 重启方案从 PowerShell 改为 `.cmd` 脚本（备用，当前不再调用）
+
 ## [3.5.0] - 2026-06-12
 
 ### 修复 / Fixed

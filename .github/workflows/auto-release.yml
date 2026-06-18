@@ -33,6 +33,11 @@ jobs:
           - GUI (default): `CalcPaper`
           - CLI: `CalcPaper --cli`
 
+          ### 🆕 New in v3.5.1 / v3.5.1 改进
+          - 🔄 **Remove auto-restart after update / 取消自动重启**
+            - No more "Failed to load Python DLL" errors after update / 彻底解决更新后 DLL 加载失败
+            - Click OK to exit, then manually reopen / 点击确定退出，手动重新打开即为新版本
+
           ### 🆕 New in v3.5 / v3.5 新功能
           - 🛠️ **Startup & Stability Improvements / 启动与稳定性改进**
             - Fix Git console window flash on Windows / 修复启动时 Git 控制台窗口闪烁

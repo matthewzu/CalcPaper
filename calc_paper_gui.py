@@ -754,15 +754,16 @@ class CalculatorGUIAdvanced:
                 os.rename(exe_path, old_path)
                 os.rename(tmp_path, exe_path)
 
-            # Show completion with README link, then auto-restart
+            # Show completion dialog — exit after user clicks OK
             def _post_update():
                 readme_url = f"https://github.com/{GITHUB_REPO}#readme"
-                msg = f"v{new_version} downloaded. Restarting..." if self.language == 'en' \
-                    else f"v{new_version} 已下载，即将重启..."
+                msg = (f"v{new_version} downloaded. Click OK to exit, then reopen manually."
+                       if self.language == 'en'
+                       else f"v{new_version} 已下载完成，点击确定后将退出，请手动重新打开。")
                 link_text = "📖 " + ("View README" if self.language == 'en' else "查看说明")
                 _link_dialog(self.root, "Update" if self.language == 'en' else "更新",
                              msg, link_text, readme_url, ask=False, gui=self)
-                self._restart_app(exe_path)
+                self.root.destroy()
 
             self.root.after(0, _post_update)
         except Exception as e:
@@ -782,46 +783,65 @@ class CalculatorGUIAdvanced:
     def _restart_app(self, exe_path=None):
         """Restart the application after update.
         
-        Waits for the current process to fully exit before launching the new exe.
+        Uses a .cmd script (Windows) to wait for the current process to fully
+        exit before launching the new exe with a clean environment.
         
-        Critical: Must clear _MEIPASS2 environment variable to prevent the new
-        process from inheriting the old PyInstaller temp directory path, which
-        causes "Failed to load Python DLL" errors on Windows or similar issues
-        on macOS/Linux.
+        Critical fixes applied (from GanttPilot v1.8.4):
+        1. Clear _MEIPASS2/_MEIPASS env vars to prevent DLL path inheritance
+        2. Remove _MEI paths from PATH to prevent DLL search in deleted dirs
+        3. Use 'start /I' so the new process uses initial system environment
+        4. Poll for process exit instead of fixed sleep (ensures _MEI cleanup)
+        5. Use os._exit(0) to force immediate termination (no atexit handlers)
         """
         if exe_path is None:
             exe_path = sys.executable
         try:
             import subprocess
+            import tempfile
             # Clear PyInstaller env vars so child process doesn't inherit old _MEI path
             env = os.environ.copy()
             env.pop('_MEIPASS2', None)
             env.pop('_MEIPASS', None)
+            # Remove any PyInstaller _MEI temp directories from PATH
+            if 'PATH' in env:
+                paths = env['PATH'].split(os.pathsep)
+                paths = [p for p in paths if '_MEI' not in p]
+                env['PATH'] = os.pathsep.join(paths)
             
             current_pid = os.getpid()
             
             if sys.platform == "win32":
-                # Use PowerShell for a completely silent delay (no window flash).
-                # Wait 5 seconds for old process to fully exit and _MEI dir cleanup,
-                # then launch the new exe.
-                # Critical: Explicitly remove _MEIPASS2 inside PowerShell before
-                # launching the new process, to ensure the new exe doesn't inherit
-                # the old PyInstaller temp directory path.
-                ps_cmd = (
-                    f'powershell -WindowStyle Hidden -Command "'
-                    f'[Environment]::SetEnvironmentVariable(\'_MEIPASS2\', $null); '
-                    f'[Environment]::SetEnvironmentVariable(\'_MEIPASS\', $null); '
-                    f'$env:_MEIPASS2 = $null; '
-                    f'$env:_MEIPASS = $null; '
-                    f'Start-Sleep -Seconds 5; '
-                    f'Remove-Item -Force -ErrorAction SilentlyContinue \'{exe_path}.old\'; '
-                    f'Start-Process \'{exe_path}\'"'
-                )
+                # Write a .cmd restart script. Key points:
+                # 1. setlocal ensures env changes don't leak
+                # 2. Explicitly clear _MEIPASS2/_MEIPASS in cmd environment
+                # 3. Poll tasklist to wait for current process to fully exit
+                # 4. start /I launches new exe with initial system environment
+                script_path = os.path.join(tempfile.gettempdir(), "calcpaper_restart.cmd")
+                with open(script_path, "w", encoding="utf-8") as f:
+                    f.write("@echo off\r\n")
+                    f.write("setlocal\r\n")
+                    f.write("set \"_MEIPASS2=\"\r\n")
+                    f.write("set \"_MEIPASS=\"\r\n")
+                    f.write(":wait\r\n")
+                    f.write(f'tasklist /FI "PID eq {current_pid}" 2>NUL | find /I "{current_pid}" >NUL\r\n')
+                    f.write("if not errorlevel 1 (\r\n")
+                    f.write("    timeout /t 1 /nobreak >NUL\r\n")
+                    f.write("    goto wait\r\n")
+                    f.write(")\r\n")
+                    f.write("timeout /t 2 /nobreak >NUL\r\n")
+                    f.write(f'del /f "{exe_path}.old" 2>NUL\r\n')
+                    f.write(f'start /I "" "{exe_path}"\r\n')
+                    f.write("endlocal\r\n")
+                    f.write(f'del /f "{script_path}" 2>NUL\r\n')
+                # Use STARTUPINFO to hide the cmd window
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 0  # SW_HIDE
                 subprocess.Popen(
-                    ps_cmd,
-                    shell=True,
+                    [script_path],
                     env=env,
-                    creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                    startupinfo=si,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
                     close_fds=True
                 )
             elif sys.platform == "darwin":
@@ -851,7 +871,7 @@ class CalculatorGUIAdvanced:
         except Exception:
             pass
         self.root.destroy()
-        sys.exit(0)
+        os._exit(0)
 
     # ==================== Window and Title ====================
 
